@@ -7,6 +7,7 @@ Created on Fri Apr 14 21:49:56 2023
 
 import numpy as np
 import time
+import os
 
 class Learn_network(object):
 
@@ -264,9 +265,10 @@ class Learn_network(object):
                 avg_cost_tracking.append(avg_cost)
                 avg_eta_tracking_ = np.average(np.array(avg_eta_tracking_))
                 avg_eta_tracking.append(avg_eta_tracking_)
-            
-        # os.mkdir(par_filename)
-        # os.mkdir(f'{par_filename}')
+        
+        directory = os.path.join('..','..','..')
+        os.mkdir(par_filename)
+        os.mkdir(f'{par_filename}')
         
         if save_params:
             for l in range(len(self.N)):        
