@@ -36,8 +36,15 @@ class Learn_network(object):
         
         self.weights = self.weight_like[:]
         self.bias = self.bias_like[:]
-            
-    
+        
+        par_filename = os.path.join('..','..','training_params')
+        dir_content = os.listdir(par_filename)
+        
+        if dir_content == []: dir_ind = 0
+        else: dir_ind = int(dir_content[-1][-6]) + 1  
+        
+        self.par_filename = os.path.join(par_filename,f'p{dir_ind}')
+              
     def get_output(self, inp_, layer=False, label=None):
         
         if layer == True:
@@ -128,8 +135,7 @@ class Learn_network(object):
     def learn(
             self, 
             inp,
-            des_out,
-            par_filename, 
+            des_out, 
             treshold, 
             time_limit=np.infty, 
             GD='mini_b', 
@@ -266,18 +272,14 @@ class Learn_network(object):
                 avg_eta_tracking_ = np.average(np.array(avg_eta_tracking_))
                 avg_eta_tracking.append(avg_eta_tracking_)
         
-        directory = os.path.join('..','..','..')
-        os.mkdir(par_filename)
-        os.mkdir(f'{par_filename}')
-        
         if save_params:
             for l in range(len(self.N)):        
-                np.save(par_filename + '_w' + str(l), self.weights[l],allow_pickle=True)
-                np.save(par_filename + '_b' + str(l), self.bias[l],allow_pickle=True)
+                np.save(self.par_filename + '_w' + str(l), self.weights[l],allow_pickle=True)
+                np.save(self.par_filename + '_b' + str(l), self.bias[l],allow_pickle=True)
             
         if as_text:          
-            np.savetxt(par_filename + '_w', self.weights,allow_pickle=True,dtype=object)
-            np.savetxt(par_filename + '_b', self.bias,allow_pickle=True,dtype=object)
+            np.savetxt(self.par_filename + '_w', self.weights,allow_pickle=True,dtype=object)
+            np.savetxt(self.par_filename + '_b', self.bias,allow_pickle=True,dtype=object)
             
         print(f'Training successful in {elapsed_learning_time}. Parameters saved to:' \
               '{par_filename}_w.npy and {par_filename}_b.npy')
