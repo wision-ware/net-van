@@ -10,10 +10,12 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from itertools import count
 import os
+from glob import glob
 
 
 class Network(object):
     
+    path_ = os.path.join('..','..','training_params')
 
 #activation functions
     
@@ -26,22 +28,40 @@ class Network(object):
 
         return (1/(1+np.exp(-x))) if d == False\
         else ((1/(1+np.exp(-x)))*(1-(1/(1+np.exp(-x)))))
-        
     
-    def __init__(self, par_filename, N):
- 
-    #processing user input          
+    
+    def extract_int(string):
         
+        n_str = ''
+        for i, char in enumerate(string):
+            n_str += char if char.isdigit() == True else ''
+        n_str = int(n_str)
+        
+        return n_str
+    
+    
+    def __init__(self, index=None):
+ 
         bias_load = []
         weight_load = []
+        path_ = np.copy(Network.path_)
+        last_file = glob(os.path.join(path_,'*.npy'))[-1]
+        last_index = Network.extract_int(last_file)
         
-        for l in range(len(N)):
+        if index is not None: p_ind = index
+        else: p_ind = last_index
+        
+        w_par_files = glob(os.path.join(path_,f'p{p_ind}_w*.npy'))
+        b_par_files = glob(os.path.join(path_,f'p{p_ind}_b*.npy'))
+        
+        for file in w_par_files:           
+            weight_load.append(np.load(file))
             
-            weight_load.append(np.load(f'{str(par_filename)}_w{l}.npy'))
-            bias_load.append(np.load(f'{str(par_filename)}_b{l}.npy'))
+        for file in b_par_files:
+            bias_load.append(np.load(file))
         
         params = [weight_load,bias_load]
-        self.N = N
+        self.N = len(w_par_files)
         
         weight_like = [0]*len(self.N)
         bias_like = [0]*len(self.N)
@@ -57,7 +77,40 @@ class Network(object):
                 
             self.weights[l] = params[0][l]
             self.bias[l] = params[1][l]
-
+    
+    
+    def clear_dir(self, indices=None):
+         
+        try:
+            if indices is not None:
+                
+                path_ = np.copy(Network.path_)
+                files = []
+                
+                for n in indices:
+                    n = int(n)
+                    files_ = glob(os.path.join(path_,f'p{n}*.npy'))
+                    files.extend(files_)
+                    
+                for file in files:
+                    os.remove(file)
+            
+            else:
+                files = glob(os.path.join(path_,'p*.npy'))
+                for file in files:
+                    os.remove(file)
+                    
+        except ValueError:
+            print('Warning: Input indices must correspond with existing parameter files!')
+            
+    
+    def current_index(self):
+        
+        path_ = np.copy(Network.path_)
+        end_file = glob(os.path.join(path_,'p*.npy'))[-1]
+        extracted = Network.extract_int(end_file)
+        return extracted
+    
 #output method
     
     def get_output(self, inp_, layer=False, label=None):
@@ -86,8 +139,7 @@ class Network(object):
                 p_output = (Network.ReLU(activation1 + self.bias[l]))\
                     if l < (len(self.N)-1) else (Network.Sigmoid(activation1 + self.bias[l]))                      
                         
-                if layer == True:
-                            
+                if layer == True:                            
                     all_out.append(p_output[:])
     
     #computing cost

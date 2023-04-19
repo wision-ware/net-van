@@ -8,9 +8,12 @@ Created on Fri Apr 14 21:49:56 2023
 import numpy as np
 import time
 import os
+from glob import glob
 
 class Learn_network(object):
-
+    
+    path_ = os.path.join('..','..','training_params')
+    
     def ReLU(x, d=False):
             
         return np.where(x<0,0.,(x if d==False else 1)) 
@@ -20,7 +23,17 @@ class Learn_network(object):
 
         return (1/(1+np.exp(-x))) if d == False\
         else ((1/(1+np.exp(-x)))*(1-(1/(1+np.exp(-x)))))
+        
     
+    def extract_int(string):
+        
+        n_str = ''
+        for i, char in enumerate(string):
+            n_str += char if char.isdigit() == True else ''
+        n_str = int(n_str)
+        
+        return n_str
+        
     
     def __init__(self, N):
 
@@ -34,17 +47,50 @@ class Learn_network(object):
         self.weight_like = weight_like
         self.bias_like = bias_like
         
-        self.weights = self.weight_like[:]
-        self.bias = self.bias_like[:]
+        self.weights = np.copy(self.weight_like)
+        self.bias = np.copy(self.bias_like)
         
-        par_filename = os.path.join('..','..','training_params')
-        dir_content = os.listdir(par_filename)
+        path_ = np.copy(Learn_network.path_)
+        dir_content = glob(os.path.join(path_,'p*.npy'))
         
         if dir_content == []: dir_ind = 0
-        else: dir_ind = int(dir_content[-1][-6]) + 1  
+        else: dir_ind = Learn_network.extract_int(dir_content[-1]) + 1  
         
-        self.par_filename = os.path.join(par_filename,f'p{dir_ind}')
-              
+        self.par_filename = os.path.join(path_,f'p{dir_ind}')
+        
+        
+    def clear_dir(self, indices=None):
+         
+        try:
+            if indices is not None:
+                
+                path_ = np.copy(Learn_network.path_)
+                files = []
+                
+                for n in indices:
+                    n = int(n)
+                    files_ = glob(os.path.join(path_,f'p{n}*.npy'))
+                    files.extend(files_)
+                    
+                for file in files:
+                    os.remove(file)
+            
+            else:
+                files = glob(os.path.join(path_,'p*.npy'))
+                for file in files:
+                    os.remove(file)
+                    
+        except ValueError:
+            print('Warning: Input indices must correspond with existing parameter files!')
+            
+    
+    def current_index(self):
+        
+        path_ = np.copy(Learn_network.path_)
+        end_file = glob(os.path.join(path_,'p*.npy'))[-1]
+        extracted = Learn_network.extract_int(end_file)
+        return extracted
+        
     def get_output(self, inp_, layer=False, label=None):
         
         if layer == True:
@@ -54,7 +100,7 @@ class Learn_network(object):
 
     #first layer output
                 
-        p_output = inp_[:]
+        p_output = np.copy(inp_)
         
         if layer == True:
                     
@@ -145,7 +191,8 @@ class Learn_network(object):
             as_text=False,
             fixed_iter=0,
             dia_data=False,
-            save_params=True
+            save_params=True,
+            overwrite=True
             ):
                     
         d_index = 0
@@ -272,16 +319,33 @@ class Learn_network(object):
                 avg_eta_tracking_ = np.average(np.array(avg_eta_tracking_))
                 avg_eta_tracking.append(avg_eta_tracking_)
         
+        path_ = np.copy(Learn_network.path_)
+        
+        if overwrite:
+
+            if glob(os.path.join(path_,'p*.npy')) != []:
+                current_ind = Learn_network.extract_int(os.listdir(path_)[-1])
+            else:
+                current_ind = 0
+
+            deletions = glob(os.path.join(path_,f'p{current_ind}*.npy'))            
+            for file in deletions:
+                os.remove(file)
+
+            saving_filename = os.path.join(path_,f'p{current_ind}')
+            
+        else:
+            saving_filename = np.copy(self.par_filename)
+        
         if save_params:
             for l in range(len(self.N)):        
-                np.save(self.par_filename + '_w' + str(l), self.weights[l],allow_pickle=True)
-                np.save(self.par_filename + '_b' + str(l), self.bias[l],allow_pickle=True)
+                np.save(saving_filename + '_w' + str(l), self.weights[l],allow_pickle=True,dtype=object)
+                np.save(saving_filename + '_b' + str(l), self.bias[l],allow_pickle=True,dtype=object)
             
         if as_text:          
-            np.savetxt(self.par_filename + '_w', self.weights,allow_pickle=True,dtype=object)
-            np.savetxt(self.par_filename + '_b', self.bias,allow_pickle=True,dtype=object)
+            np.savetxt(saving_filename + '_w', self.weights,allow_pickle=True,dtype=object)
+            np.savetxt(saving_filename + '_b', self.bias,allow_pickle=True,dtype=object)
             
-        print(f'Training successful in {elapsed_learning_time}. Parameters saved to:' \
-              '{par_filename}_w.npy and {par_filename}_b.npy')
+        print(f'Training successful after {elapsed_learning_time}s.')
         
         return avg_cost_tracking, avg_eta_tracking if dia_data else None
