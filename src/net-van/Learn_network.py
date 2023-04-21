@@ -23,15 +23,35 @@ class Learn_network(object):
 
         return (1/(1+np.exp(-x))) if d == False\
         else ((1/(1+np.exp(-x)))*(1-(1/(1+np.exp(-x)))))
+            
         
+    def extract_int(string, cut=None):
     
-    def extract_int(string):
+        if cut is None:
+            n_str = ''
+            for i, char in enumerate(string):
+                n_str += char if char.isdigit() == True else ''
+            n_str = int(n_str)
         
-        n_str = ''
-        for i, char in enumerate(string):
-            n_str += char if char.isdigit() == True else ''
-        n_str = int(n_str)
-        
+        else:
+            try:
+                assert cut == any(['first','last']), "Split needs to be either \"first\" or \"last\""
+            except AssertionError:
+                raise
+            
+            if cut == "first":
+                n_str = ''
+                for i, char in enumerate(string):
+                    n_str += char if char.isdigit() == True else ''
+                    if char == '_': break
+                
+            if cut == "last":
+                n_str = ''
+                for i,char1 in enumerate(string):
+                    if char1 == '_':
+                        for char2 in string[i:]:
+                            n_str += char2 if char2.isdigit() == True else ''
+                        break
         return n_str
         
     
@@ -54,7 +74,7 @@ class Learn_network(object):
         dir_content = glob(os.path.join(path_,'p*.npy'))
         
         if dir_content == []: dir_ind = 0
-        else: dir_ind = Learn_network.extract_int(dir_content[-1]) + 1  
+        else: dir_ind = Learn_network.extract_int(dir_content[-1],cut='first') + 1  
         
         self.par_filename = os.path.join(path_,f'p{dir_ind}')
         
@@ -80,7 +100,7 @@ class Learn_network(object):
                 for file in files:
                     os.remove(file)
                     
-        except ValueError:
+        except (ValueError, IndexError):
             print('Warning: Input indices must correspond with existing parameter files!')
             
     
@@ -88,7 +108,7 @@ class Learn_network(object):
         
         path_ = np.copy(Learn_network.path_)
         end_file = glob(os.path.join(path_,'p*.npy'))[-1]
-        extracted = Learn_network.extract_int(end_file)
+        extracted = Learn_network.extract_int(end_file,cut='first')
         return extracted
         
     def get_output(self, inp_, layer=False, label=None):
@@ -322,8 +342,9 @@ class Learn_network(object):
         path_ = np.copy(Learn_network.path_)
         
         if overwrite:
-
-            if glob(os.path.join(path_,'p*.npy')) != []:
+            dir_content = glob(os.path.join(path_,'p*.npy'))
+            
+            if dir_content != []:
                 current_ind = Learn_network.extract_int(os.listdir(path_)[-1])
             else:
                 current_ind = 0
