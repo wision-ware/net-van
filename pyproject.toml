@@ -7,8 +7,10 @@ readme = "README.md"
 packages = [{include = "src/net-van"}]
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = ">3.7 <3.11"
 numpy = "^1.21.2"
+glob2 = "*"
+matplotlib = "^3.5.0"
 
 [build-system]
 requires = ["poetry-core"]
