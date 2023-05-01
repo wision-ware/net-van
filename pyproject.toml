@@ -1,16 +1,17 @@
 [tool.poetry]
 name = "net-van"
-version = "0.1.0"
+version = "0.1.1"
 description = "Small and easy to use feed-forward ANN library."
 authors = ["Vavrinec Kavan <vavrinec.kavan@gmail.com>"]
 readme = "README.md"
-packages = [{include = "src/net-van"}]
+packages = [{include = "src/net_van"}]
 
 [tool.poetry.dependencies]
 python = ">3.7 <3.11"
 numpy = "^1.21.2"
 glob2 = "*"
 matplotlib = "^3.5.0"
+spyder-kernels = ">=2.2.0,<2.3.0"
 
 [build-system]
 requires = ["poetry-core"]
