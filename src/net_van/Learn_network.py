@@ -241,7 +241,7 @@ class Learn_network(object):
             0,np.sqrt(2/(self.N[l] + self.N[l-1])),(self.N[l-1],self.N[l])
             )
     
-        t_0 = time.perf_counter()
+        t_0 = time.process_time()
         elapsed_learning_time = 0
             
     #main training loop        
@@ -329,7 +329,7 @@ class Learn_network(object):
 
                         
             d_index += 1
-            elapsed_learning_time = time.perf_counter() - t_0
+            elapsed_learning_time = time.process_time() - t_0
             
             if live_monitor:
                 print(avg_cost)
