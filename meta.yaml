@@ -6,7 +6,7 @@ package:
   version: "{{ version }}"
 
 source:
-  git_url: https://github.com/huh-uh/net-van.git
+  git_url: https://github.com/huh-uh/net-van/src/net_van.git
 
 
 requirements:
