@@ -6,8 +6,7 @@ package:
   version: "{{ version }}"
 
 source:
-  git_url: https://github.com/huh-uh/net-van.git
-
+  path: \src\net_van\
 
 requirements:
   host:
