@@ -6,7 +6,7 @@ package:
   version: "{{ version }}"
 
 source:
-  path: \src\net_van\
+  path: src\net_van\
 
 requirements:
   host:
