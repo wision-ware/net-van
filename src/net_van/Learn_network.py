@@ -102,8 +102,8 @@ class Learn_network(object):
         self.weight_like = weight_like
         self.bias_like = bias_like
 
-        self.weights = np.copy(self.weight_like)
-        self.bias = np.copy(self.bias_like)
+        self.weights = self.weight_like[:]
+        self.bias = self.bias_like[:]
 
         path_ = str(np.copy(Learn_network.path_))
         dir_ind = Learn_network.current_index()
@@ -156,7 +156,7 @@ class Learn_network(object):
             cost = np.sum(dif**2)
             self.cost = cost
 
-        if layer == True: return [np.copy(all_out_act),np.copy(all_out)]
+        if layer == True: return [all_out_act[:],all_out[:]]
         else: return np.copy(p_output)
 
 #backpropagation
@@ -336,14 +336,16 @@ class Learn_network(object):
                 print(empty_chars,end='\r')
                 message = 'Current cost minimum: ' + str(min(avg_cost_tracking))
                 print(message,end='\r')
-                empty_chars = "\b"*len(message)
+                empty_chars = "\b"*(len(message))
 
             if dia_data:
                 avg_eta_tracking_ = np.average(np.array(avg_eta_tracking_))
                 avg_eta_tracking.append(avg_eta_tracking_)
 
         path_ = str(np.copy(Learn_network.path_))
-        if live_monitor: print(empty_chars,end='\n')
+        if live_monitor:
+            empty_chars = "\b"*(len(message))
+            print(empty_chars,end='\r')
 
         if type(overwrite) == bool:
 
@@ -382,4 +384,18 @@ class Learn_network(object):
 
         print(f'Training successful after {elapsed_learning_time}s.',end='\n')
 
-        return (avg_cost_tracking, avg_eta_tracking) if dia_data else None
+        return_dict = {'weights':self.weights,
+                       'bias':self.bias}
+
+        if dia_data:
+            return_dict['cost'] = avg_cost_tracking
+            return_dict['l_rate'] = avg_eta_tracking
+
+        return return_dict
+
+
+
+
+
+
+

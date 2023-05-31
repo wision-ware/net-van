@@ -95,7 +95,7 @@ class Network(object):
             print('Warning: Input indices must correspond with existing parameter files!')
 
 
-    def __init__(self, index=None): #if index is left None, than the latest existing is used
+    def __init__(self, index=None, ): #if index is left None, than the latest existing is used
 
         bias_load = []
         weight_load = []
@@ -165,13 +165,17 @@ class Network(object):
     def get_output(self, inp_, layer=False, label=None):
 
         if layer == True:
+
+            all_out_act = []
             all_out = []
 
     #first layer output
 
-        p_output = inp_[:]
+        p_output = np.copy(inp_)
 
         if layer == True:
+
+            all_out_act.append(p_output[:])
             all_out.append(p_output[:])
 
     #rest of the layers propagating
@@ -180,25 +184,29 @@ class Network(object):
 
             for l in range(1,(len(self.N) if type(layer) == bool else layer)):
 
-                activation1 = np.sum(np.full(
-                    (self.N[l],self.N[l-1]),
-                    p_output
-                    ).T\
-                    *self.weights[l],axis=0)
-                p_output = (Network.ReLU(activation1 + self.bias[l]))\
-                    if l < (len(self.N)-1) else (Network.Sigmoid(activation1 + self.bias[l]))
+                act_matrix = np.full((self.N[l],self.N[l-1]),p_output)
+                act_matrix = np.transpose(act_matrix)*self.weights[l]
+                activation = np.sum(act_matrix,axis=0) + self.bias[l]
+
+                if l < (len(self.N)-1): p_output = Network.ReLU(activation)
+                else: p_output = Network.Sigmoid(activation)
 
                 if layer == True:
+
+                    all_out_act.append(activation[:])
                     all_out.append(p_output[:])
 
     #computing cost
 
         if label is not None:
 
-            cost = 0
-            cost = np.sum((label[:] - (
-                p_output[:] if layer==False or type(layer)==int else all_out[-1]))**2)
+            if layer==False or type(layer)==int: output = np.copy(p_output)
+            else: output = np.copy(all_out[-1])
+
+            dif = label - output
+            cost = np.sum(dif**2)
             self.cost = cost
 
-        return p_output if layer==False or type(layer)==int else all_out
+        if layer == True: return [np.copy(all_out_act),np.copy(all_out)]
+        else: return np.copy(p_output)
 
