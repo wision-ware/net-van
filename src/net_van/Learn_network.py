@@ -9,6 +9,7 @@ import numpy as np
 import time
 import os
 from glob import glob
+import numbers
 
 class Learn_network(object):
 
@@ -161,20 +162,22 @@ class Learn_network(object):
 
 #backpropagation
 
-    def backpropagate(self, inp, des_out):
+    def backpropagate(self, inp, labels):
 
         gradient = self.weight_like[:]
         partial_bias = self.bias_like[:]
-        output = self.get_output(inp,layer=True,label=des_out)
+        output = self.get_output(inp,layer=True,label=labels)
 
     #output layer
 
-        deltas = Learn_network.Sigmoid(output[0][-1],True)\
-        *(output[1][-1]-des_out[:])
+        dsigmoid = Learn_network.Sigmoid(output[0][-1],True)
+        dif = output[1][-1]-labels[:]
+        deltas = dsigmoid*dif
         partial_bias_0 = deltas[:]
 
-        grad_0 = np.full((self.N[-2],self.N[-1]),deltas)\
-        *np.full((self.N[-1],self.N[-2]),output[1][-2]).T
+        m_deltas = np.full((self.N[-2],self.N[-1]),deltas)
+        m_output = np.full((self.N[-1],self.N[-2]),output[1][-2])
+        grad_0 = m_deltas*np.transpose(m_output)
 
         gradient[-1] = grad_0[:]
         partial_bias[-1] = partial_bias_0[:]
@@ -184,12 +187,17 @@ class Learn_network(object):
 
         for l in range(2,len(self.N)):
 
-            sumation = np.full((self.N[-(l-1)],self.N[-l]),Learn_network.ReLU(output[0][-l][:],True)).T\
-            *np.full((self.N[-l],self.N[-(l-1)]),deltas_old)*self.weights[-(l-1)]
-            deltas_new = np.sum(sumation,axis=1)[:]
+            drelu = Learn_network.ReLU(output[0][-l][:],True)
+            m_drelu = np.full((self.N[-(l-1)],self.N[-l]),drelu)
+            m_deltas_old = np.full((self.N[-l],self.N[-(l-1)]),deltas_old)
 
-            gradient[-l] = np.full((self.N[-(l+1)],self.N[-l]),deltas_new)\
-            *np.full((self.N[-l],self.N[-(l+1)]),output[1][-(l+1)]).T
+            summaries = np.transpose(m_drelu)*m_deltas_old*self.weights[-(l-1)]
+            deltas_new = np.sum(summaries,axis=1)[:]
+
+            m_deltas_new = np.full((self.N[-(l+1)],self.N[-l]),deltas_new)
+            m_output = np.full((self.N[-l],self.N[-(l+1)]),output[1][-(l+1)])
+
+            gradient[-l] = m_deltas_new*np.transpose(m_output)
             partial_bias[-l] = deltas_new[:]
             deltas_old = deltas_new[:]
 
@@ -200,7 +208,7 @@ class Learn_network(object):
     def learn(
             self,
             inp,
-            des_out,
+            labels,
             treshold=1e-12,
             time_limit=np.infty,
             GD='mini_b',
@@ -215,10 +223,67 @@ class Learn_network(object):
             save_index=None
             ):
 
+        # checking if all inputs are of the correct type and shape
+
+        def typeval_assertion(t_condition,v_condition,t_message,v_message):
+
+            try:
+                assert t_condition
+            except AssertionError:
+                raise TypeError(t_message)
+
+            try:
+                assert v_condition
+            except AssertionError:
+                raise ValueError(v_message)
+
+        typeval_assertion( # training data verification
+            type(inp) == np.ndarray,
+            len(inp.shape) == 2,
+            f"positional argument \'inp\' must be type: numpy.ndarray, not {type(inp)}!",
+            f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
+            )
+        try:
+            assert inp.shape[1] == self.N[0]
+        except AssertionError:
+            raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
+
+        typeval_assertion( # data label verification
+            type(labels) == np.ndarray,
+            len(labels.shape) == 2,
+            f"positional argument \'labels\' must be type: numpy.ndarray, not {type(inp)}!",
+            f"positional argument \'labels\' must be 2 dimensional (samples, binary_sort_cases), {len(inp.shape)} dimensional was given!"
+            )
+        try:
+            assert labels.shape[1] == self.N[-1]
+        except AssertionError:
+            raise ValueError(f"size of the second dimension of the positional argument \'labels\' must be equal to the number of output nodes of the final layer! ({self.N[-1]} required, {labels.shape[1]} given)")
+
+        typeval_assertion( # cost treshold verification
+            isinstance(treshold,numbers.Number),
+            treshold > 0,
+            f"keyword argument \'treshold\' must be a number, not {type(treshold)}!",
+            f"keyword argument \'treshold\' must be positive!"
+            )
+        typeval_assertion( # training time limit verification
+            isinstance(time_limit,numbers.Number),
+            time_limit > 0,
+            f"keyword argument \'time_limit\' must be a number, not {type(treshold)}!",
+            f"keyword argument \'time_limit\' must be positive!"
+            )
+        GD_options = ['mini_b','batch','stochastic'] # gradient descent type switch options
+        typeval_assertion( # gradient descent type switch verification
+            isinstance(GD,str),
+            GD in GD_options,
+            f"keyword argument \'GD\' must be type \'str\', not {type(GD)}!",
+            f"keyword argument \'GD\' must be one of the following: "
+            )
+
+
         d_index = 0
         gamma = 0.9
         eta_r = 0.001
-        self.get_output(inp[0,:],False,label=des_out[0,:])
+        self.get_output(inp[0,:],False,label=labels[0,:])
         avg_cost = 999
 
         if dia_data or live_monitor: avg_cost_tracking = []
@@ -252,7 +317,7 @@ class Learn_network(object):
             if GD == 'stochastic':
                 d_indices = np.arange(len(inp))
                 ind = np.random.choice(d_indices)
-                partials = self.backpropagate(inp[ind,:],des_out[ind,:])
+                partials = self.backpropagate(inp[ind,:],labels[ind,:])
                 avg_cost = self.cost/self.N[-1]
 
             if GD == 'batch':
@@ -262,7 +327,7 @@ class Learn_network(object):
 
                 for i in range(len(inp)):
 
-                    backprop_out = self.backpropagate(inp[i,:],des_out[i,:])
+                    backprop_out = self.backpropagate(inp[i,:],labels[i,:])
                     iter_cost_sum += self.cost/self.N[-1]
 
                     for l in range(1,len(self.N)):
@@ -284,7 +349,7 @@ class Learn_network(object):
                 for i in range(batch_size):
 
                     ind = np.random.choice(d_indices)
-                    backprop_out = self.backpropagate(inp[ind,:],des_out[ind,:])
+                    backprop_out = self.backpropagate(inp[ind,:],labels[ind,:])
                     iter_cost_sum += self.cost/self.N[-1]
 
                     for l in range(1,len(self.N)):
