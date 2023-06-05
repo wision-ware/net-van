@@ -9,7 +9,7 @@ import numpy as np
 import time
 import os
 from glob import glob
-import numbers
+from decimal import Decimal
 
 class Learn_network(object):
 
@@ -260,23 +260,51 @@ class Learn_network(object):
             raise ValueError(f"size of the second dimension of the positional argument \'labels\' must be equal to the number of output nodes of the final layer! ({self.N[-1]} required, {labels.shape[1]} given)")
 
         typeval_assertion( # cost treshold verification
-            isinstance(treshold,numbers.Number),
+            isinstance(treshold,(float,Decimal)),
             treshold > 0,
             f"keyword argument \'treshold\' must be a number, not {type(treshold)}!",
-            f"keyword argument \'treshold\' must be positive!"
+            "keyword argument \'treshold\' must be positive!"
             )
         typeval_assertion( # training time limit verification
-            isinstance(time_limit,numbers.Number),
+            isinstance(time_limit,(float,Decimal)),
             time_limit > 0,
             f"keyword argument \'time_limit\' must be a number, not {type(treshold)}!",
-            f"keyword argument \'time_limit\' must be positive!"
+            "keyword argument \'time_limit\' must be positive!"
             )
         GD_options = ['mini_b','batch','stochastic'] # gradient descent type switch options
         typeval_assertion( # gradient descent type switch verification
             isinstance(GD,str),
             GD in GD_options,
             f"keyword argument \'GD\' must be type \'str\', not {type(GD)}!",
-            f"keyword argument \'GD\' must be one of the following: "
+            f"keyword argument \'GD\' must be one of the following: {GD_options}"
+            )
+        typeval_assertion( # batch size verification
+            isinstance(batch_size,int),
+            batch_size > 0,
+            f"keyword argument \'batch_size\' must be type \'int\', not {type(batch_size)}!",
+            "keyword argument \'batch_size\' must be positive!"
+            )
+        typeval_assertion( # batch size verification
+            isinstance(eta,(float,Decimal)),
+            eta > 0,
+            f"keyword argument \'eta\' must be type \'int\', not {type(eta)}!",
+            "keyword argument \'eta\' must be positive!"
+            )
+        try: # live monitor toggle verification
+            assert isinstance(live_monitor,str)
+        except AssertionError:
+            raise TypeError(f"keyword argument \'live_monitor\' must be type \'int\', not {type(live_monitor)}!")
+
+        try: # saving in .txt format toggle verification
+            assert isinstance(as_text,str)
+        except AssertionError:
+            raise TypeError(f"keyword argument \'as_text\' must be type \'int\', not {type(as_text)}!")
+
+        typeval_assertion( # verification of the fixed number of iterations
+            isinstance(fixed_iter,int),
+            fixed_iter >= 0,
+            f"keyword argument \'fixed_iter\' must be type \'int\', not {type(fixed_iter)}!",
+            "keyword argument \'fixed_iter\' can not be negative!"
             )
 
 
