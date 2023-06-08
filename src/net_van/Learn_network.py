@@ -26,6 +26,19 @@ class Learn_network(object):
         else ((1/(1+np.exp(-x)))*(1-(1/(1+np.exp(-x)))))
 
 
+    def typeval_assertion(t_condition,v_condition,t_message,v_message):
+
+        try:
+            assert t_condition
+        except AssertionError:
+            raise TypeError(t_message)
+
+        try:
+            assert v_condition
+        except AssertionError:
+            raise ValueError(v_message)
+
+
     def extract_int(string, cut=None):
 
         if cut is None:
@@ -93,6 +106,18 @@ class Learn_network(object):
 
     def __init__(self, N):
 
+        # verifying parameters
+
+        confirmation = [(True if isinstance(i,int) else False) for i in N]
+        Learn_network.typeval_assertion(
+            isinstance(N, (np.ndarray, list)),
+            all(confirmation),
+            f"positional argument \'N\' must be type: \'list\' or \'numpy.ndarray\', not {type(N)}!",
+            "all of the elements of positional argument \'N\' must be type: \'int\'!"
+            )
+
+        # --
+
         self.N = N
 
         weight_like = [0]*len(self.N)
@@ -108,27 +133,45 @@ class Learn_network(object):
 
         path_ = str(np.copy(Learn_network.path_))
         dir_ind = Learn_network.current_index()
-
         self.par_filename = os.path.join(path_,f'p{dir_ind}')
 
 
-    def get_output(self, inp_, layer=False, label=None):
+    def get_output(self, inp, layer=False, label=None):
+
+        # verifying  parameters
+
+        Learn_network.typeval_assertion( # training data verification
+            type(inp) == np.ndarray,
+            len(inp.shape) == 2,
+            f"positional argument \'inp\' must be type: \'numpy.ndarray\', not {type(inp)}!",
+            f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
+            )
+        try:
+            assert inp.shape[1] == self.N[0]
+        except AssertionError:
+            raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
+
+        Learn_network.typeval_assertion(
+            isinstance(layer, bool) or isinstance(layer, int),
+            isinstance(layer, bool) or layer >= 0,
+            f"keyword argument \'layer\' must be type \'int\' or \'bool\', not {type(layer)}!",
+            "keyword argument \'layer\' can not be negative!"
+            )
+
+        # --
 
         if layer == True:
-
             all_out_act = []
             all_out = []
 
-    #first layer output
+        # first layer output
 
-        p_output = np.copy(inp_)
-
+        p_output = np.copy(inp)
         if layer == True:
-
             all_out_act.append(p_output[:])
             all_out.append(p_output[:])
 
-    #rest of the layers propagating
+        # rest of the layers propagating
 
         if (layer > 1) or (len(self.N) > 1):
 
@@ -142,11 +185,10 @@ class Learn_network(object):
                 else: p_output = Learn_network.Sigmoid(activation)
 
                 if layer == True:
-
                     all_out_act.append(activation[:])
                     all_out.append(p_output[:])
 
-    #computing cost
+        # computing cost
 
         if label is not None:
 
@@ -160,15 +202,41 @@ class Learn_network(object):
         if layer == True: return [all_out_act[:],all_out[:]]
         else: return np.copy(p_output)
 
-#backpropagation
+    # backpropagation
 
     def backpropagate(self, inp, labels):
+
+        # verifying  parameters
+
+        Learn_network.typeval_assertion( # training data verification
+            type(inp) == np.ndarray,
+            len(inp.shape) == 2,
+            f"positional argument \'inp\' must be type: numpy.ndarray, not {type(inp)}!",
+            f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
+            )
+        try:
+            assert inp.shape[1] == self.N[0]
+        except AssertionError:
+            raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
+
+        Learn_network.typeval_assertion( # data label verification
+            type(labels) == np.ndarray,
+            len(labels.shape) == 2,
+            f"positional argument \'labels\' must be type: numpy.ndarray, not {type(inp)}!",
+            f"positional argument \'labels\' must be 2 dimensional (samples, binary_sort_cases), {len(inp.shape)} dimensional was given!"
+            )
+        try:
+            assert labels.shape[1] == self.N[-1]
+        except AssertionError:
+            raise ValueError(f"size of the second dimension of the positional argument \'labels\' must be equal to the number of output nodes of the final layer! ({self.N[-1]} required, {labels.shape[1]} given)")
+
+        # --
 
         gradient = self.weight_like[:]
         partial_bias = self.bias_like[:]
         output = self.get_output(inp,layer=True,label=labels)
 
-    #output layer
+        # output layer
 
         dsigmoid = Learn_network.Sigmoid(output[0][-1],True)
         dif = output[1][-1]-labels[:]
@@ -183,7 +251,7 @@ class Learn_network(object):
         partial_bias[-1] = partial_bias_0[:]
         deltas_old = deltas[:]
 
-    #hidden layers
+        # hidden layers
 
         for l in range(2,len(self.N)):
 
@@ -203,7 +271,7 @@ class Learn_network(object):
 
         return [gradient[:],partial_bias[:]]
 
-#learning algorithm with optional learning rate, cost treshold and GD methods
+    # learning algorithm with optional learning rate, cost treshold and GD methods
 
     def learn(
             self,
@@ -219,25 +287,12 @@ class Learn_network(object):
             fixed_iter=0,
             dia_data=False,
             save_params=True,
-            overwrite=True,
-            save_index=None
+            overwrite=True
             ):
 
-        # checking if all inputs are of the correct type and shape
+        # verifying  parameters
 
-        def typeval_assertion(t_condition,v_condition,t_message,v_message):
-
-            try:
-                assert t_condition
-            except AssertionError:
-                raise TypeError(t_message)
-
-            try:
-                assert v_condition
-            except AssertionError:
-                raise ValueError(v_message)
-
-        typeval_assertion( # training data verification
+        Learn_network.typeval_assertion( # training data verification
             type(inp) == np.ndarray,
             len(inp.shape) == 2,
             f"positional argument \'inp\' must be type: numpy.ndarray, not {type(inp)}!",
@@ -248,7 +303,7 @@ class Learn_network(object):
         except AssertionError:
             raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
 
-        typeval_assertion( # data label verification
+        Learn_network.typeval_assertion( # data label verification
             type(labels) == np.ndarray,
             len(labels.shape) == 2,
             f"positional argument \'labels\' must be type: numpy.ndarray, not {type(inp)}!",
@@ -259,54 +314,71 @@ class Learn_network(object):
         except AssertionError:
             raise ValueError(f"size of the second dimension of the positional argument \'labels\' must be equal to the number of output nodes of the final layer! ({self.N[-1]} required, {labels.shape[1]} given)")
 
-        typeval_assertion( # cost treshold verification
+        Learn_network.typeval_assertion( # cost treshold verification
             isinstance(treshold,(float,Decimal)),
             treshold > 0,
             f"keyword argument \'treshold\' must be a number, not {type(treshold)}!",
             "keyword argument \'treshold\' must be positive!"
             )
-        typeval_assertion( # training time limit verification
+        Learn_network.typeval_assertion( # training time limit verification
             isinstance(time_limit,(float,Decimal)),
             time_limit > 0,
             f"keyword argument \'time_limit\' must be a number, not {type(treshold)}!",
             "keyword argument \'time_limit\' must be positive!"
             )
         GD_options = ['mini_b','batch','stochastic'] # gradient descent type switch options
-        typeval_assertion( # gradient descent type switch verification
+        Learn_network.typeval_assertion( # gradient descent type switch verification
             isinstance(GD,str),
             GD in GD_options,
             f"keyword argument \'GD\' must be type \'str\', not {type(GD)}!",
             f"keyword argument \'GD\' must be one of the following: {GD_options}"
             )
-        typeval_assertion( # batch size verification
+        Learn_network.typeval_assertion( # batch size verification
             isinstance(batch_size,int),
             batch_size > 0,
             f"keyword argument \'batch_size\' must be type \'int\', not {type(batch_size)}!",
             "keyword argument \'batch_size\' must be positive!"
             )
-        typeval_assertion( # batch size verification
+        Learn_network.typeval_assertion( # batch size verification
             isinstance(eta,(float,Decimal)),
             eta > 0,
             f"keyword argument \'eta\' must be type \'int\', not {type(eta)}!",
             "keyword argument \'eta\' must be positive!"
             )
         try: # live monitor toggle verification
-            assert isinstance(live_monitor,str)
+            assert isinstance(live_monitor,bool)
         except AssertionError:
-            raise TypeError(f"keyword argument \'live_monitor\' must be type \'int\', not {type(live_monitor)}!")
+            raise TypeError(f"keyword argument \'live_monitor\' must be type \'bool\', not {type(live_monitor)}!")
 
         try: # saving in .txt format toggle verification
-            assert isinstance(as_text,str)
+            assert isinstance(as_text,bool)
         except AssertionError:
-            raise TypeError(f"keyword argument \'as_text\' must be type \'int\', not {type(as_text)}!")
+            raise TypeError(f"keyword argument \'as_text\' must be type \'bool\', not {type(as_text)}!")
 
-        typeval_assertion( # verification of the fixed number of iterations
+        Learn_network.typeval_assertion( # verification of the fixed number of iterations
             isinstance(fixed_iter,int),
             fixed_iter >= 0,
             f"keyword argument \'fixed_iter\' must be type \'int\', not {type(fixed_iter)}!",
             "keyword argument \'fixed_iter\' can not be negative!"
             )
+        try: # diagnostic data return toggle verification
+            assert isinstance(dia_data,bool)
+        except AssertionError:
+            raise TypeError(f"keyword argument \'dia_data\' must be type \'bool\', not {type(dia_data)}!")
 
+        try: # trained parameter saving to binary (.npy) format verification
+            assert isinstance(save_params,bool)
+        except AssertionError:
+            raise TypeError(f"keyword argument \'save_params\' must be type \'bool\', not {type(save_params)}!")
+
+        Learn_network.typeval_assertion(
+            isinstance(overwrite, bool) or isinstance(overwrite, int),
+            isinstance(overwrite, bool) or overwrite >= 0,
+            f"keyword argument \'overwrite\' must be type \'int\' or \'bool\', not {type(overwrite)}!",
+            "keyword argument \'overwrite\' can not be negative!"
+            )
+
+        # --
 
         d_index = 0
         gamma = 0.9
@@ -325,7 +397,7 @@ class Learn_network(object):
         dif_w = self.weight_like[:]
         dif_b = self.bias_like[:]
 
-    #parameter init
+    # parameter init
 
         for l in range(1,len(self.N)):
             self.weights[l] = np.random.normal(
@@ -337,7 +409,7 @@ class Learn_network(object):
         t_0 = time.process_time()
         elapsed_learning_time = 0
 
-    #main training loop
+    # main training loop
 
         while (d_index < fixed_iter) if fixed_iter != 0\
             else ((avg_cost > treshold) & (elapsed_learning_time < time_limit)):
