@@ -6,24 +6,31 @@ Created on Fri Apr 14 21:49:56 2023
 """
 
 import numpy as np
+import cupy as cp
 import time
 import os
 from glob import glob
 from decimal import Decimal
+import warnings
+import inspect
 
 class Learn_network(object):
 
     path_ = os.path.join('..','..','training_params')
 
-    def ReLU(x, d=False):
+    def ReLU(x, d=False, GPU=False):
 
-        return np.where(x<0,0.,(x if d==False else 1))
+        if GPU: xp = cp
+        else: xp = np
+        return xp.where(x<0,0.,(x if d==False else 1))
 
 
-    def Sigmoid(x, d=False):
+    def Sigmoid(x, d=False, GPU=False):
 
-        return (1/(1+np.exp(-x))) if d == False\
-        else ((1/(1+np.exp(-x)))*(1-(1/(1+np.exp(-x)))))
+        if GPU: xp = cp
+        else: xp = np
+        return (1/(1+xp.exp(-x))) if d == False\
+        else ((1/(1+xp.exp(-x)))*(1-(1/(1+xp.exp(-x)))))
 
 
     def typeval_assertion(t_condition,v_condition,t_message,v_message):
@@ -72,7 +79,7 @@ class Learn_network(object):
     def clear_dir(indices=None):
 
         try:
-            path_ = str(np.copy(Learn_network.path_))
+            path_ = Learn_network.path_
             if indices is not None:
 
                 files = []
@@ -96,7 +103,7 @@ class Learn_network(object):
 
     def current_index():
 
-        path_ = str(np.copy(Learn_network.path_))
+        path_ = Learn_network.path_
         all_files = glob(os.path.join(path_,'p*.npy'))
         if all_files != []:
             end_basename = os.path.basename(all_files[-1])
@@ -104,7 +111,7 @@ class Learn_network(object):
             return extracted
         else: return 0
 
-    def __init__(self, N):
+    def __init__(self, N, GPU=True):
 
         # verifying parameters
 
@@ -115,33 +122,66 @@ class Learn_network(object):
             f"positional argument \'N\' must be type: \'list\' or \'numpy.ndarray\', not {type(N)}!",
             "all of the elements of positional argument \'N\' must be type: \'int\'!"
             )
+        try:
+            assert isinstance(GPU, bool)
+        except AssertionError:
+            raise TypeError(f"keyword argument \'GPU\' must be type \'bool\', not {type(GPU)}!")
+
+        # PU variable setup
+
+        if GPU:
+            _ = cp.zeros((10,), dtype=cp.float32)
+            if cp.cuda.runtime.getDeviceCount() == 0:
+                warnings.warn("No CUDA supporting device, only CPU will be used.")
+                GPU = False
+        if GPU: xp = cp
+        else: xp = np
 
         # --
 
         self.N = N
+        self.GPU = GPU
 
         weight_like = [0]*len(self.N)
         bias_like = [0]*len(self.N)
         for l in range(1,len(self.N)):
-            weight_like[l] = np.zeros((self.N[l-1],self.N[l]))
-            bias_like[l] = np.zeros((self.N[l]))
+            weight_like[l] = xp.zeros((self.N[l-1],self.N[l]))
+            bias_like[l] = xp.zeros((self.N[l]))
         self.weight_like = weight_like
         self.bias_like = bias_like
 
         self.weights = self.weight_like[:]
         self.bias = self.bias_like[:]
 
-        path_ = str(np.copy(Learn_network.path_))
+        path_ = Learn_network.path_
         dir_ind = Learn_network.current_index()
         self.par_filename = os.path.join(path_,f'p{dir_ind}')
 
 
+    def call_origin(self):
+
+        caller_frame = inspect.currentframe().f_back
+        caller_name = caller_frame.f_globals['__name__']
+
+        if caller_name == self.__class__.__name__:
+            inside = True
+        else:
+            inside = False
+
+        return inside
+
+
     def get_output(self, inp, layer=False, label=None):
+
+        # PU prefix setup
+
+        if self.GPU: xp = cp
+        else: xp = np
 
         # verifying  parameters
 
         Learn_network.typeval_assertion( # training data verification
-            type(inp) == np.ndarray,
+            type(inp) == xp.ndarray,
             len(inp.shape) == 2,
             f"positional argument \'inp\' must be type: \'numpy.ndarray\', not {type(inp)}!",
             f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
@@ -158,6 +198,15 @@ class Learn_network(object):
             "keyword argument \'layer\' can not be negative!"
             )
 
+        # checking call origin
+
+        inside = self.call_origin()
+
+        # PU variable setup
+
+        if self.GPU:
+            inp = cp.copy(inp)
+
         # --
 
         if layer == True:
@@ -166,7 +215,7 @@ class Learn_network(object):
 
         # first layer output
 
-        p_output = np.copy(inp)
+        p_output = xp.copy(inp)
         if layer == True:
             all_out_act.append(p_output[:])
             all_out.append(p_output[:])
@@ -177,14 +226,17 @@ class Learn_network(object):
 
             for l in range(1,(len(self.N) if type(layer) == bool else layer)):
 
-                act_matrix = np.full((self.N[l],self.N[l-1]),p_output)
-                act_matrix = np.transpose(act_matrix)*self.weights[l]
-                activation = np.sum(act_matrix,axis=0) + self.bias[l]
+                act_matrix = xp.full((self.N[l],self.N[l-1]),p_output)
+                act_matrix = xp.transpose(act_matrix)*self.weights[l]
+                activation = xp.sum(act_matrix,axis=0) + self.bias[l]
 
-                if l < (len(self.N)-1): p_output = Learn_network.ReLU(activation)
-                else: p_output = Learn_network.Sigmoid(activation)
+                if l < (len(self.N)-1): p_output = Learn_network.ReLU(activation, GPU=self.GPU)
+                else: p_output = Learn_network.Sigmoid(activation,GPU=self.GPU)
 
-                if layer == True:
+                if layer == True and not inside:
+                    all_out_act.append(np.copy(activation[:]))
+                    all_out.append(np.copy(p_output[:]))
+                elif layer == True:
                     all_out_act.append(activation[:])
                     all_out.append(p_output[:])
 
@@ -192,43 +244,61 @@ class Learn_network(object):
 
         if label is not None:
 
-            if layer==False or type(layer)==int: output = np.copy(p_output)
-            else: output = np.copy(all_out[-1])
+            if layer==False or type(layer)==int: output = xp.copy(p_output)
+            else: output = xp.copy(all_out[-1])
 
             dif = label - output
-            cost = np.sum(dif**2)
+            cost = xp.sum(dif**2)
             self.cost = cost
 
         if layer == True: return [all_out_act[:],all_out[:]]
-        else: return np.copy(p_output)
+        elif not inside and self.GPU: return np.copy(p_output)
+        else: return xp.copy(p_output)
 
     # backpropagation
 
-    def backpropagate(self, inp, labels):
+    def backpropagate(self, inp, labels, skip_check=False):
+
+        # PU prefix setup
+
+        if self.GPU: xp = cp
+        else: xp = np
 
         # verifying  parameters
 
-        Learn_network.typeval_assertion( # training data verification
-            type(inp) == np.ndarray,
-            len(inp.shape) == 2,
-            f"positional argument \'inp\' must be type: numpy.ndarray, not {type(inp)}!",
-            f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
-            )
-        try:
-            assert inp.shape[1] == self.N[0]
-        except AssertionError:
-            raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
+        if not skip_check:
 
-        Learn_network.typeval_assertion( # data label verification
-            type(labels) == np.ndarray,
-            len(labels.shape) == 2,
-            f"positional argument \'labels\' must be type: numpy.ndarray, not {type(inp)}!",
-            f"positional argument \'labels\' must be 2 dimensional (samples, binary_sort_cases), {len(inp.shape)} dimensional was given!"
-            )
-        try:
-            assert labels.shape[1] == self.N[-1]
-        except AssertionError:
-            raise ValueError(f"size of the second dimension of the positional argument \'labels\' must be equal to the number of output nodes of the final layer! ({self.N[-1]} required, {labels.shape[1]} given)")
+            Learn_network.typeval_assertion( # training data verification
+                type(inp) == xp.ndarray,
+                len(inp.shape) == 2,
+                f"positional argument \'inp\' must be type: numpy.ndarray, not {type(inp)}!",
+                f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
+                )
+            try:
+                assert inp.shape[1] == self.N[0]
+            except AssertionError:
+                raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
+
+            Learn_network.typeval_assertion( # data label verification
+                type(labels) == xp.ndarray,
+                len(labels.shape) == 2,
+                f"positional argument \'labels\' must be type: numpy.ndarray, not {type(inp)}!",
+                f"positional argument \'labels\' must be 2 dimensional (samples, binary_sort_cases), {len(inp.shape)} dimensional was given!"
+                )
+            try:
+                assert labels.shape[1] == self.N[-1]
+            except AssertionError:
+                raise ValueError(f"size of the second dimension of the positional argument \'labels\' must be equal to the number of output nodes of the final layer! ({self.N[-1]} required, {labels.shape[1]} given)")
+
+        # checking call origin
+
+        inside = self.call_origin()
+
+        # PU variable setup
+
+        if self.GPU:
+            labels = cp.copy(labels)
+            inp = cp.copy(inp)
 
         # --
 
@@ -238,14 +308,14 @@ class Learn_network(object):
 
         # output layer
 
-        dsigmoid = Learn_network.Sigmoid(output[0][-1],True)
+        dsigmoid = Learn_network.Sigmoid(output[0][-1],d=True,GPU=self.GPU)
         dif = output[1][-1]-labels[:]
         deltas = dsigmoid*dif
         partial_bias_0 = deltas[:]
 
-        m_deltas = np.full((self.N[-2],self.N[-1]),deltas)
-        m_output = np.full((self.N[-1],self.N[-2]),output[1][-2])
-        grad_0 = m_deltas*np.transpose(m_output)
+        m_deltas = xp.full((self.N[-2],self.N[-1]),deltas)
+        m_output = xp.full((self.N[-1],self.N[-2]),output[1][-2])
+        grad_0 = m_deltas*xp.transpose(m_output)
 
         gradient[-1] = grad_0[:]
         partial_bias[-1] = partial_bias_0[:]
@@ -255,18 +325,24 @@ class Learn_network(object):
 
         for l in range(2,len(self.N)):
 
-            drelu = Learn_network.ReLU(output[0][-l][:],True)
-            m_drelu = np.full((self.N[-(l-1)],self.N[-l]),drelu)
-            m_deltas_old = np.full((self.N[-l],self.N[-(l-1)]),deltas_old)
+            drelu = Learn_network.ReLU(output[0][-l][:],d=True,GPU=self.GPU)
+            m_drelu = xp.full((self.N[-(l-1)],self.N[-l]),drelu)
+            m_deltas_old = xp.full((self.N[-l],self.N[-(l-1)]),deltas_old)
 
-            summaries = np.transpose(m_drelu)*m_deltas_old*self.weights[-(l-1)]
-            deltas_new = np.sum(summaries,axis=1)[:]
+            summaries = xp.transpose(m_drelu)*m_deltas_old*self.weights[-(l-1)]
+            # dltas_new = xp.matmul()
+            deltas_new = xp.sum(summaries,axis=1)[:]
 
-            m_deltas_new = np.full((self.N[-(l+1)],self.N[-l]),deltas_new)
-            m_output = np.full((self.N[-l],self.N[-(l+1)]),output[1][-(l+1)])
+            m_deltas_new = xp.full((self.N[-(l+1)],self.N[-l]),deltas_new)
+            m_output = xp.full((self.N[-l],self.N[-(l+1)]),output[1][-(l+1)])
 
-            gradient[-l] = m_deltas_new*np.transpose(m_output)
+            gradient[-l] = m_deltas_new*xp.transpose(m_output)
             partial_bias[-l] = deltas_new[:]
+
+            if not inside and self.GPU:
+                gradient[-l] = np.copy(gradient[-l])
+                partial_bias[-l] = np.copy(partial_bias[-l])
+
             deltas_old = deltas_new[:]
 
         return [gradient[:],partial_bias[:]]
@@ -290,10 +366,15 @@ class Learn_network(object):
             overwrite=True
             ):
 
+        # PU prefix setup
+
+        if self.GPU: xp = cp
+        else: xp = np
+
         # verifying  parameters
 
         Learn_network.typeval_assertion( # training data verification
-            type(inp) == np.ndarray,
+            type(inp) == xp.ndarray,
             len(inp.shape) == 2,
             f"positional argument \'inp\' must be type: numpy.ndarray, not {type(inp)}!",
             f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
@@ -304,7 +385,7 @@ class Learn_network(object):
             raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
 
         Learn_network.typeval_assertion( # data label verification
-            type(labels) == np.ndarray,
+            type(labels) == xp.ndarray,
             len(labels.shape) == 2,
             f"positional argument \'labels\' must be type: numpy.ndarray, not {type(inp)}!",
             f"positional argument \'labels\' must be 2 dimensional (samples, binary_sort_cases), {len(inp.shape)} dimensional was given!"
@@ -378,6 +459,12 @@ class Learn_network(object):
             "keyword argument \'overwrite\' can not be negative!"
             )
 
+        # PU variable setup
+
+        if self.GPU:
+            labels = cp.copy(labels)
+            inp = cp.copy(inp)
+
         # --
 
         d_index = 0
@@ -400,10 +487,10 @@ class Learn_network(object):
     # parameter init
 
         for l in range(1,len(self.N)):
-            self.weights[l] = np.random.normal(
-            0,2/np.sqrt(self.N[l] + self.N[l-1]),(self.N[l-1],self.N[l]))\
-            if l < (self.N[-1]) else np.random.normal(
-            0,np.sqrt(2/(self.N[l] + self.N[l-1])),(self.N[l-1],self.N[l])
+            self.weights[l] = xp.random.normal(
+            0,2/xp.sqrt(self.N[l] + self.N[l-1]),(self.N[l-1],self.N[l]))\
+            if l < (self.N[-1]) else xp.random.normal(
+            0,xp.sqrt(2/(self.N[l] + self.N[l-1])),(self.N[l-1],self.N[l])
             )
 
         t_0 = time.process_time()
@@ -414,9 +501,11 @@ class Learn_network(object):
         while (d_index < fixed_iter) if fixed_iter != 0\
             else ((avg_cost > treshold) & (elapsed_learning_time < time_limit)):
 
+            # computing gradients and avarage cost
+
             if GD == 'stochastic':
-                d_indices = np.arange(len(inp))
-                ind = np.random.choice(d_indices)
+                d_indices = xp.arange(len(inp))
+                ind = xp.random.choice(d_indices)
                 partials = self.backpropagate(inp[ind,:],labels[ind,:])
                 avg_cost = self.cost/self.N[-1]
 
@@ -443,12 +532,12 @@ class Learn_network(object):
             if GD == 'mini_b':
 
                 s_partials = [self.weight_like[:],self.bias_like[:]]
-                d_indices = np.arange(len(inp))
+                d_indices = xp.arange(len(inp))
                 iter_cost_sum = 0
 
                 for i in range(batch_size):
 
-                    ind = np.random.choice(d_indices)
+                    ind = xp.random.choice(d_indices)
                     backprop_out = self.backpropagate(inp[ind,:],labels[ind,:])
                     iter_cost_sum += self.cost/self.N[-1]
 
@@ -470,7 +559,7 @@ class Learn_network(object):
                     R_w[l] = (1-gamma)*(partials[0][l])**2\
                         + (gamma*R_w[l] if d_index > 0 else 0)
 
-                dif_w[l] = ((eta_r/(np.sqrt(R_w[l]) + 0.001))*partials[0][l])\
+                dif_w[l] = ((eta_r/(xp.sqrt(R_w[l]) + 0.001))*partials[0][l])\
                 if GD == 'mini_b' else (eta*partials[0][l] + gamma*dif_w[l])
                 self.weights[l] = self.weights[l][:] - dif_w[l][:]
 
@@ -478,18 +567,18 @@ class Learn_network(object):
                     R_b[l] = (1-gamma)*(partials[1][l])**2\
                         + (gamma*R_b[l] if d_index > 0 else 0)
 
-                dif_b[l] = ((eta_r/(np.sqrt(R_b[l]) + 0.001))*partials[1][l])\
+                dif_b[l] = ((eta_r/(xp.sqrt(R_b[l]) + 0.001))*partials[1][l])\
                 if GD == 'mini_b' else (eta*partials[1][l] + gamma*dif_b[l])
                 self.bias[l] = self.bias[l][:] - dif_b[l][:]
 
                 if dia_data:
 
                     if GD == 'mini_b':
-                        avg_eta = eta_r/(np.sqrt(R_w[l]) + 0.00001)
+                        avg_eta = eta_r/(xp.sqrt(R_w[l]) + 0.00001)
                     else:
                         avg_eta = (eta*partials[0][l] + gamma*dif_w[l])/(partials[0][l]+0.0001)
 
-                    avg_eta = np.average(avg_eta)
+                    avg_eta = xp.average(avg_eta)
                     avg_eta_tracking_.append(avg_eta)
 
 
@@ -504,10 +593,10 @@ class Learn_network(object):
                 empty_chars = "\b"*(len(message))
 
             if dia_data:
-                avg_eta_tracking_ = np.average(np.array(avg_eta_tracking_))
+                avg_eta_tracking_ = xp.average(xp.array(avg_eta_tracking_))
                 avg_eta_tracking.append(avg_eta_tracking_)
 
-        path_ = str(np.copy(Learn_network.path_))
+        path_ = Learn_network.path_
         if live_monitor:
             empty_chars = "\b"*(len(message))
             print(empty_chars,end='\r')
@@ -529,14 +618,11 @@ class Learn_network(object):
             else:
                 saving_filename = os.path.join(path_,f'p{current_ind}')
 
-        elif type(overwrite) == int:
+        else:
             saving_filename = os.path.join(path_,f'p{overwrite}')
             deletions = glob(os.path.join(path_,f'p{overwrite}*.npy'))
             for file in deletions:
                 os.remove(file)
-
-        else:
-            raise TypeError('overwrite argument accepts only type bool and integer')
 
         if save_params:
             for l in range(1,len(self.N)):
@@ -549,10 +635,21 @@ class Learn_network(object):
 
         print(f'Training successful after {elapsed_learning_time}s.',end='\n')
 
-        return_dict = {'weights':self.weights,
-                       'bias':self.bias}
+        r_weights = self.weight_like
+        r_bias = self.bias_like
 
-        if dia_data:
+        if self.GPU:
+            for l in range(1,len(self.N)):
+                r_weights[l] = np.copy(self.weights[l])
+                r_bias[l] = np.copy(self.bias[l])
+
+        return_dict = {'weights':r_weights,
+                       'bias':r_bias}
+
+        if dia_data and self.GPU:
+            return_dict['cost'] = np.copy(avg_cost_tracking)
+            return_dict['l_rate'] = np.copy(avg_eta_tracking)
+        elif dia_data:
             return_dict['cost'] = avg_cost_tracking
             return_dict['l_rate'] = avg_eta_tracking
 
