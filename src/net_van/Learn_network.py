@@ -115,7 +115,7 @@ class Learn_network(object):
 
         # verifying parameters
 
-        confirmation = [(True if isinstance(i,int) else False) for i in N]
+        confirmation = [isinstance(i,(int, np.integer)) for i in N]
         Learn_network.typeval_assertion(
             isinstance(N, (np.ndarray, list)),
             all(confirmation),
@@ -181,18 +181,18 @@ class Learn_network(object):
         # verifying  parameters
 
         Learn_network.typeval_assertion( # training data verification
-            type(inp) == xp.ndarray,
-            len(inp.shape) == 2,
+            isinstance(inp, np.ndarray),
+            len(inp.shape) == 1,
             f"positional argument \'inp\' must be type: \'numpy.ndarray\', not {type(inp)}!",
-            f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
+            f"positional argument \'inp\' must be 1 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
             )
         try:
-            assert inp.shape[1] == self.N[0]
+            assert inp.shape[0] == self.N[0]
         except AssertionError:
             raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
 
         Learn_network.typeval_assertion(
-            isinstance(layer, bool) or isinstance(layer, int),
+            isinstance(layer, bool) or isinstance(layer, (int,np.integer)),
             isinstance(layer, bool) or layer >= 0,
             f"keyword argument \'layer\' must be type \'int\' or \'bool\', not {type(layer)}!",
             "keyword argument \'layer\' can not be negative!"
@@ -354,7 +354,7 @@ class Learn_network(object):
             inp,
             labels,
             treshold=1e-12,
-            time_limit=np.infty,
+            time_limit=np.inf,
             GD='mini_b',
             batch_size=50,
             eta=0.005,
@@ -374,7 +374,7 @@ class Learn_network(object):
         # verifying  parameters
 
         Learn_network.typeval_assertion( # training data verification
-            type(inp) == xp.ndarray,
+            isinstance(inp, np.ndarray),
             len(inp.shape) == 2,
             f"positional argument \'inp\' must be type: numpy.ndarray, not {type(inp)}!",
             f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
@@ -385,7 +385,7 @@ class Learn_network(object):
             raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
 
         Learn_network.typeval_assertion( # data label verification
-            type(labels) == xp.ndarray,
+            isinstance(labels, np.ndarray),
             len(labels.shape) == 2,
             f"positional argument \'labels\' must be type: numpy.ndarray, not {type(inp)}!",
             f"positional argument \'labels\' must be 2 dimensional (samples, binary_sort_cases), {len(inp.shape)} dimensional was given!"
@@ -396,15 +396,15 @@ class Learn_network(object):
             raise ValueError(f"size of the second dimension of the positional argument \'labels\' must be equal to the number of output nodes of the final layer! ({self.N[-1]} required, {labels.shape[1]} given)")
 
         Learn_network.typeval_assertion( # cost treshold verification
-            isinstance(treshold,(float,Decimal)),
+            isinstance(treshold,(float,Decimal,np.floating)),
             treshold > 0,
             f"keyword argument \'treshold\' must be a number, not {type(treshold)}!",
             "keyword argument \'treshold\' must be positive!"
             )
         Learn_network.typeval_assertion( # training time limit verification
-            isinstance(time_limit,(float,Decimal)),
+            isinstance(time_limit,(float,int,Decimal,np.floating,np.integer)),
             time_limit > 0,
-            f"keyword argument \'time_limit\' must be a number, not {type(treshold)}!",
+            f"keyword argument \'time_limit\' must be a number, not {type(time_limit)}!",
             "keyword argument \'time_limit\' must be positive!"
             )
         GD_options = ['mini_b','batch','stochastic'] # gradient descent type switch options
@@ -415,13 +415,13 @@ class Learn_network(object):
             f"keyword argument \'GD\' must be one of the following: {GD_options}"
             )
         Learn_network.typeval_assertion( # batch size verification
-            isinstance(batch_size,int),
+            isinstance(batch_size,(int,np.integer)),
             batch_size > 0,
             f"keyword argument \'batch_size\' must be type \'int\', not {type(batch_size)}!",
             "keyword argument \'batch_size\' must be positive!"
             )
         Learn_network.typeval_assertion( # batch size verification
-            isinstance(eta,(float,Decimal)),
+            isinstance(eta,(float,Decimal,np.floating)),
             eta > 0,
             f"keyword argument \'eta\' must be type \'int\', not {type(eta)}!",
             "keyword argument \'eta\' must be positive!"
@@ -437,7 +437,7 @@ class Learn_network(object):
             raise TypeError(f"keyword argument \'as_text\' must be type \'bool\', not {type(as_text)}!")
 
         Learn_network.typeval_assertion( # verification of the fixed number of iterations
-            isinstance(fixed_iter,int),
+            isinstance(fixed_iter,(int,np.integer)),
             fixed_iter >= 0,
             f"keyword argument \'fixed_iter\' must be type \'int\', not {type(fixed_iter)}!",
             "keyword argument \'fixed_iter\' can not be negative!"
@@ -453,7 +453,7 @@ class Learn_network(object):
             raise TypeError(f"keyword argument \'save_params\' must be type \'bool\', not {type(save_params)}!")
 
         Learn_network.typeval_assertion(
-            isinstance(overwrite, bool) or isinstance(overwrite, int),
+            isinstance(overwrite, bool) or isinstance(overwrite, (int,np.integer)),
             isinstance(overwrite, bool) or overwrite >= 0,
             f"keyword argument \'overwrite\' must be type \'int\' or \'bool\', not {type(overwrite)}!",
             "keyword argument \'overwrite\' can not be negative!"
