@@ -173,6 +173,10 @@ class Learn_network(object):
 
     def get_output(self, inp, layer=False, label=None):
 
+        # checking call origin
+
+        inside = self.call_origin()
+
         # PU prefix setup
 
         if self.GPU: xp = cp
@@ -180,32 +184,34 @@ class Learn_network(object):
 
         # verifying  parameters
 
-        Learn_network.typeval_assertion( # training data verification
-            isinstance(inp, np.ndarray),
-            len(inp.shape) == 1,
-            f"positional argument \'inp\' must be type: \'numpy.ndarray\', not {type(inp)}!",
-            f"positional argument \'inp\' must be 1 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
-            )
-        try:
-            assert inp.shape[0] == self.N[0]
-        except AssertionError:
-            raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
+        if not inside:
 
-        Learn_network.typeval_assertion(
-            isinstance(layer, bool) or isinstance(layer, (int,np.integer)),
-            isinstance(layer, bool) or layer >= 0,
-            f"keyword argument \'layer\' must be type \'int\' or \'bool\', not {type(layer)}!",
-            "keyword argument \'layer\' can not be negative!"
-            )
+            Learn_network.typeval_assertion( # training data verification
+                isinstance(inp, np.ndarray),
+                len(inp.shape) == 1,
+                f"positional argument \'inp\' must be type: \'numpy.ndarray\', not {type(inp)}!",
+                f"positional argument \'inp\' must be 1 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
+                )
+            try:
+                assert inp.shape[0] == self.N[0]
+            except AssertionError:
+                raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
 
-        # checking call origin
-
-        inside = self.call_origin()
+            Learn_network.typeval_assertion(
+                isinstance(layer, bool) or isinstance(layer, (int,np.integer)),
+                isinstance(layer, bool) or layer >= 0,
+                f"keyword argument \'layer\' must be type \'int\' or \'bool\', not {type(layer)}!",
+                "keyword argument \'layer\' can not be negative!"
+                )
 
         # PU variable setup
 
-        if self.GPU:
-            inp = cp.copy(inp)
+        if self.GPU and label is not None:
+            label = cp.asarray(label,dtype='f')
+            inp = cp.asarray(inp,dtype='f')
+
+        elif self.GPU:
+            inp = cp.asarray(inp,dtype='f')
 
         # --
 
@@ -226,7 +232,8 @@ class Learn_network(object):
 
             for l in range(1,(len(self.N) if type(layer) == bool else layer)):
 
-                act_matrix = xp.full((self.N[l],self.N[l-1]),p_output)
+                # act_matrix = xp.full((self.N[l],self.N[l-1]),p_output)
+                act_matrix = xp.tile(p_output,(self.N[l],1))
                 act_matrix = xp.transpose(act_matrix)*self.weights[l]
                 activation = xp.sum(act_matrix,axis=0) + self.bias[l]
 
@@ -269,8 +276,8 @@ class Learn_network(object):
         if not skip_check:
 
             Learn_network.typeval_assertion( # training data verification
-                type(inp) == xp.ndarray,
-                len(inp.shape) == 2,
+                isinstance(inp, np.ndarray),
+                len(inp.shape) == 1,
                 f"positional argument \'inp\' must be type: numpy.ndarray, not {type(inp)}!",
                 f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
                 )
@@ -280,8 +287,8 @@ class Learn_network(object):
                 raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
 
             Learn_network.typeval_assertion( # data label verification
-                type(labels) == xp.ndarray,
-                len(labels.shape) == 2,
+                isinstance(labels, np.ndarray),
+                len(labels.shape) == 1,
                 f"positional argument \'labels\' must be type: numpy.ndarray, not {type(inp)}!",
                 f"positional argument \'labels\' must be 2 dimensional (samples, binary_sort_cases), {len(inp.shape)} dimensional was given!"
                 )
@@ -297,8 +304,8 @@ class Learn_network(object):
         # PU variable setup
 
         if self.GPU:
-            labels = cp.copy(labels)
-            inp = cp.copy(inp)
+            labels = cp.asarray(labels,dtype='f')
+            inp = cp.asarray(inp,dtype='f')
 
         # --
 
@@ -462,8 +469,8 @@ class Learn_network(object):
         # PU variable setup
 
         if self.GPU:
-            labels = cp.copy(labels)
-            inp = cp.copy(inp)
+            labels = cp.asarray(labels,dtype='f')
+            inp = cp.asarray(inp,dtype='f')
 
         # --
 
@@ -505,8 +512,8 @@ class Learn_network(object):
 
             if GD == 'stochastic':
                 d_indices = xp.arange(len(inp))
-                ind = xp.random.choice(d_indices)
-                partials = self.backpropagate(inp[ind,:],labels[ind,:])
+                ind = int(xp.random.choice(d_indices,size=1))
+                partials = self.backpropagate(inp[ind,:],labels[ind,:],skip_check=True)
                 avg_cost = self.cost/self.N[-1]
 
             if GD == 'batch':
@@ -516,7 +523,7 @@ class Learn_network(object):
 
                 for i in range(len(inp)):
 
-                    backprop_out = self.backpropagate(inp[i,:],labels[i,:])
+                    backprop_out = self.backpropagate(inp[i,:],labels[i,:],skip_check=True)
                     iter_cost_sum += self.cost/self.N[-1]
 
                     for l in range(1,len(self.N)):
@@ -537,8 +544,8 @@ class Learn_network(object):
 
                 for i in range(batch_size):
 
-                    ind = xp.random.choice(d_indices)
-                    backprop_out = self.backpropagate(inp[ind,:],labels[ind,:])
+                    ind = int(xp.random.choice(d_indices,size=1))
+                    backprop_out = self.backpropagate(inp[ind,:],labels[ind,:],skip_check=True)
                     iter_cost_sum += self.cost/self.N[-1]
 
                     for l in range(1,len(self.N)):
@@ -647,8 +654,8 @@ class Learn_network(object):
                        'bias':r_bias}
 
         if dia_data and self.GPU:
-            return_dict['cost'] = np.copy(avg_cost_tracking)
-            return_dict['l_rate'] = np.copy(avg_eta_tracking)
+            return_dict['cost'] = avg_cost_tracking.get()
+            return_dict['l_rate'] = avg_eta_tracking.get()
         elif dia_data:
             return_dict['cost'] = avg_cost_tracking
             return_dict['l_rate'] = avg_eta_tracking
