@@ -134,6 +134,7 @@ class Learn_network(object):
             if cp.cuda.runtime.getDeviceCount() == 0:
                 warnings.warn("No CUDA supporting device, only CPU will be used.")
                 GPU = False
+
         if GPU: xp = cp
         else: xp = np
 
@@ -163,10 +164,8 @@ class Learn_network(object):
         caller_frame = inspect.currentframe().f_back
         caller_name = caller_frame.f_globals['__name__']
 
-        if caller_name == self.__class__.__name__:
-            inside = True
-        else:
-            inside = False
+        if caller_name == self.__class__.__name__: inside = True
+        else: inside = False
 
         return inside
 
@@ -232,10 +231,7 @@ class Learn_network(object):
 
             for l in range(1,(len(self.N) if type(layer) == bool else layer)):
 
-                # act_matrix = xp.full((self.N[l],self.N[l-1]),p_output)
-                act_matrix = xp.tile(p_output,(self.N[l],1))
-                act_matrix = xp.transpose(act_matrix)*self.weights[l]
-                activation = xp.sum(act_matrix,axis=0) + self.bias[l]
+                activation = xp.matmul(p_output,self.weights[l]) + self.bias[l]
 
                 if l < (len(self.N)-1): p_output = Learn_network.ReLU(activation, GPU=self.GPU)
                 else: p_output = Learn_network.Sigmoid(activation,GPU=self.GPU)
@@ -320,7 +316,7 @@ class Learn_network(object):
         deltas = dsigmoid*dif
         partial_bias_0 = deltas[:]
 
-        m_deltas = xp.full((self.N[-2],self.N[-1]),deltas)
+        m_deltas = xp.tile(deltas,(self.N[-2],1))
         m_output = xp.full((self.N[-1],self.N[-2]),output[1][-2])
         grad_0 = m_deltas*xp.transpose(m_output)
 
@@ -333,22 +329,19 @@ class Learn_network(object):
         for l in range(2,len(self.N)):
 
             drelu = Learn_network.ReLU(output[0][-l][:],d=True,GPU=self.GPU)
-            m_drelu = xp.full((self.N[-(l-1)],self.N[-l]),drelu)
-            m_deltas_old = xp.full((self.N[-l],self.N[-(l-1)]),deltas_old)
 
-            summaries = xp.transpose(m_drelu)*m_deltas_old*self.weights[-(l-1)]
-            # dltas_new = xp.matmul()
-            deltas_new = xp.sum(summaries,axis=1)[:]
+            deltas_new = xp.matmul(self.weights[-(l-1)],deltas_old)
+            deltas_new = deltas_new*drelu
 
-            m_deltas_new = xp.full((self.N[-(l+1)],self.N[-l]),deltas_new)
-            m_output = xp.full((self.N[-l],self.N[-(l+1)]),output[1][-(l+1)])
+            m_deltas_new = xp.tile(deltas_new,(self.N[-(l+1)],1))
+            m_output = xp.tile(output[1][-(l+1)],(self.N[-l],1))
 
             gradient[-l] = m_deltas_new*xp.transpose(m_output)
             partial_bias[-l] = deltas_new[:]
 
             if not inside and self.GPU:
-                gradient[-l] = np.copy(gradient[-l])
-                partial_bias[-l] = np.copy(partial_bias[-l])
+                gradient[-l] = cp.asnumpy(gradient[-l])
+                partial_bias[-l] = np.asnumpy(partial_bias[-l])
 
             deltas_old = deltas_new[:]
 
@@ -491,7 +484,7 @@ class Learn_network(object):
         dif_w = self.weight_like[:]
         dif_b = self.bias_like[:]
 
-    # parameter init
+        # parameter init
 
         for l in range(1,len(self.N)):
             self.weights[l] = xp.random.normal(
@@ -500,10 +493,10 @@ class Learn_network(object):
             0,xp.sqrt(2/(self.N[l] + self.N[l-1])),(self.N[l-1],self.N[l])
             )
 
-        t_0 = time.process_time()
+        t_0 = time.perf_counter()
         elapsed_learning_time = 0
 
-    # main training loop
+        # main training loop
 
         while (d_index < fixed_iter) if fixed_iter != 0\
             else ((avg_cost > treshold) & (elapsed_learning_time < time_limit)):
@@ -590,7 +583,7 @@ class Learn_network(object):
 
 
             d_index += 1
-            elapsed_learning_time = time.process_time() - t_0
+            elapsed_learning_time = time.perf_counter() - t_0
 
             if live_monitor or dia_data: avg_cost_tracking.append(avg_cost)
             if live_monitor:
@@ -647,15 +640,15 @@ class Learn_network(object):
 
         if self.GPU:
             for l in range(1,len(self.N)):
-                r_weights[l] = np.copy(self.weights[l])
-                r_bias[l] = np.copy(self.bias[l])
+                r_weights[l] = cp.asnumpy(self.weights[l])
+                r_bias[l] = cp.asnumpy(self.bias[l])
 
         return_dict = {'weights':r_weights,
                        'bias':r_bias}
 
         if dia_data and self.GPU:
-            return_dict['cost'] = avg_cost_tracking.get()
-            return_dict['l_rate'] = avg_eta_tracking.get()
+            return_dict['cost'] = np.array([np.float32(cp.asnumpy(x)) for x in avg_cost_tracking])
+            return_dict['l_rate'] = np.array([np.float32(cp.asnumpy(x)) for x in avg_eta_tracking])
         elif dia_data:
             return_dict['cost'] = avg_cost_tracking
             return_dict['l_rate'] = avg_eta_tracking

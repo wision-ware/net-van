@@ -6,23 +6,23 @@ package:
   version: "{{ version }}"
 
 source:
-  path: src\net_van\
+  path: src/net_van/
 
 requirements:
   host:
-    - colorama   # [ win ]
     - importlib-metadata   # [ py < 38 ]
     - pip
     - python
+    - conda-forge::cupy
+
 
   run:
-    - colorama   # [ win ]
     - importlib-metadata   # [ py < 38 ]
     - python
     - numpy
+    - conda-forge::cupy
 
 about:
-  home: The package home page
   license: MIT
   license_family: MIT
   license_file: LICENSE
