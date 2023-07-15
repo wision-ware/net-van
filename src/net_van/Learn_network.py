@@ -385,6 +385,9 @@ class Learn_network(object):
 
             xp = np
             if GPU: xp = cp
+            skipper = len(N)-1
+            gradients = []
+            bias_partials = []
 
             # backpropagation repeater
 
@@ -392,44 +395,39 @@ class Learn_network(object):
 
                 gradient = weight_like[:]
                 partial_bias = bias_like[:]
-                output = self.get_output(inp,layer=True,label=labels[:,i])
 
                 # computing output
 
                 all_out_act = []
                 all_out = []
-                p_output = xp.copy(inp)
+                p_output = xp.copy(inp[:,i])
 
                 for l in range(1,len(N)):
 
                     activation = xp.matmul(p_output,weights[l]) + bias[l]
 
-                    if l < (len(self.N)-1): p_output = Learn_network.ReLU(activation, GPU=GPU)
-                    else: p_output = Learn_network.Sigmoid(activation,GPU=self.GPU)
+                    match l < skipper:
+                        case True: p_output = xp.where(activation<0,0.,activation)
+                        case False: p_output = 1/(1+xp.exp(-activation))
 
-                    match l:
-                        case 0: pass #TODO
+                    all_out_act.append(xp.copy(activation[:]))
+                    all_out.append(xp.copy(p_output[:]))
 
-                    match inside:
+                # computing cost
 
-                        case True:
-                            all_out_act.append(activation[:])
-                            all_out.append(p_output[:])
-
-                        case False:
-                            all_out_act.append(np.copy(activation[:]))
-                            all_out.append(np.copy(p_output[:]))
-
+                output = [all_out_act,all_out]
+                dif = labels[:,i] - output
+                cost = xp.sum(dif**2)
 
                 # output layer
 
-                dsigmoid = Learn_network.Sigmoid(output[0][-1],d=True,GPU=self.GPU)
-                dif = output[1][-1]-labels[:]
+                dsigmoid = (1/(1+xp.exp(-output[0][-1])))*(1-(1/(1+xp.exp(-output[0][-1]))))
+                dif = output[1][-1]-labels[:,i]
                 deltas = dsigmoid*dif
                 partial_bias_0 = deltas[:]
 
-                m_deltas = xp.tile(deltas,(self.N[-2],1))
-                m_output = xp.full((self.N[-1],self.N[-2]),output[1][-2])
+                m_deltas = xp.tile(deltas,(N[-2],1))
+                m_output = xp.full((N[-1],N[-2]),output[1][-2])
                 grad_0 = m_deltas*xp.transpose(m_output)
 
                 gradient[-1] = grad_0[:]
@@ -438,26 +436,29 @@ class Learn_network(object):
 
                 # hidden layers
 
-                for l in range(2,len(self.N)):
+                for l in range(2,len(N)):
 
-                    drelu = Learn_network.ReLU(output[0][-l][:],d=True,GPU=self.GPU)
+                    drelu = xp.where(output[0][-l][:]<0,0.,1)
 
-                    deltas_new = xp.matmul(self.weights[-(l-1)],deltas_old)
+                    deltas_new = xp.matmul(weights[-(l-1)],deltas_old)
                     deltas_new = deltas_new*drelu
 
-                    m_deltas_new = xp.tile(deltas_new,(self.N[-(l+1)],1))
-                    m_output = xp.tile(output[1][-(l+1)],(self.N[-l],1))
+                    m_deltas_new = xp.tile(deltas_new,(N[-(l+1)],1))
+                    m_output = xp.tile(output[1][-(l+1)],(N[-l],1))
 
                     gradient[-l] = m_deltas_new*xp.transpose(m_output)
                     partial_bias[-l] = deltas_new[:]
 
-                    if not inside and self.GPU:
-                        gradient[-l] = cp.asnumpy(gradient[-l])
-                        partial_bias[-l] = np.asnumpy(partial_bias[-l])
-
                     deltas_old = deltas_new[:]
 
-                return [gradient[:],partial_bias[:]]
+                gradients.append(gradient[:])
+                bias_partials.append(partial_bias[:])
+
+            gradients = xp.array(gradients,dtype=object)
+            bias_partials = xp.array(bias_partials,dtype=object)
+
+            avg_dw = xp.avarage(gradients,axis=0)
+            avg_db = xp.avarage(bias_partials,axis=0)
 
         # PU prefix setup
 
