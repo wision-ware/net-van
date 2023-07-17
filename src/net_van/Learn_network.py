@@ -13,6 +13,7 @@ from glob import glob
 from decimal import Decimal
 import warnings
 import inspect
+import multiprocessing as mp
 
 class Learn_network(object):
 
@@ -254,7 +255,7 @@ class Learn_network(object):
             cost = xp.sum(dif**2)
             self.cost = cost
 
-        if layer == True: return [all_out_act[:],all_out[:]]
+        if layer == True: return [all_out_act[:],all_out[:],cost]
         elif not inside and self.GPU: return np.copy(p_output)
         else: return xp.copy(p_output)
 
@@ -345,7 +346,7 @@ class Learn_network(object):
 
             deltas_old = deltas_new[:]
 
-        return [gradient[:],partial_bias[:]]
+        return [gradient[:],partial_bias[:]], output[2]
 
     # learning algorithm with optional learning rate, cost treshold and GD methods
 
@@ -363,7 +364,8 @@ class Learn_network(object):
             fixed_iter=0,
             dia_data=False,
             save_params=True,
-            overwrite=True
+            overwrite=True,
+            processes='Auto'
             ):
 
         # backpropagation multiprocessing
@@ -552,6 +554,12 @@ class Learn_network(object):
             f"keyword argument \'overwrite\' must be type \'int\' or \'bool\', not {type(overwrite)}!",
             "keyword argument \'overwrite\' can not be negative!"
             )
+        Learn_network.typeval_assertion( # multprocessing configurator verification
+            isinstance(processes, str) or isinstance(processes, (int,np.integer,cp.integer)),
+            processes == 'Auto' or processes > 0,
+            f"keyword argument \'processes\' must be type \'int\' or \'str\', not {type(processes)}!",
+            "keyword argument \'processes\' must be positive or \'Auto\'!"
+            )
 
         # PU variable setup
 
@@ -559,8 +567,17 @@ class Learn_network(object):
             labels = cp.asarray(labels,dtype='f')
             inp = cp.asarray(inp,dtype='f')
 
+        # 'Auto' option for processes parameter
+
+        match processes:
+            case 'Auto': processes = mp.cpu_count() - 2
+        match processes < 1:
+            case True: processes = 1
+
         # --
 
+        GPU = self.GPU
+        N = self.N
         d_index = xp.int32(0)
         gamma = xp.float32(0.9)
         eta_r = xp.float32(0.001)
@@ -573,22 +590,29 @@ class Learn_network(object):
 
         ibsize = 1/batch_size
         ilimp = 1/len(inp)
-        ilast = 1/self.N[-1]
+        ilast = 1/N[-1]
+
+        weight_like = self.weight_like[:]
+        bias_like = self.bias_like[:]
 
         if GD == 'mini_b':
-            R_w = self.weight_like[:]
-            R_b = self.bias_like[:]
+            R_w = weight_like[:]
+            R_b = bias_like[:]
 
-        dif_w = self.weight_like[:]
-        dif_b = self.bias_like[:]
+        dif_w = weight_like[:]
+        dif_b = bias_like[:]
+
+        weights = weight_like[:]
+        bias = bias_like[:]
+
 
         # parameter init
 
-        for l in range(1,len(self.N)):
-            self.weights[l] = xp.random.normal(
-            0,2/xp.sqrt(self.N[l] + self.N[l-1]),(self.N[l-1],self.N[l]))\
-            if l < (self.N[-1]) else xp.random.normal(
-            0,xp.sqrt(2/(self.N[l] + self.N[l-1])),(self.N[l-1],self.N[l])
+        for l in range(1,len(N)):
+            weights[l] = xp.random.normal(
+            0,2/xp.sqrt(N[l] + N[l-1]),(N[l-1],N[l]))\
+            if l < (N[-1]) else xp.random.normal(
+            0,xp.sqrt(2/(N[l] + N[l-1])),(N[l-1],N[l])
             )
 
         t_0 = time.perf_counter()
@@ -601,63 +625,81 @@ class Learn_network(object):
 
             # computing gradients and avarage cost
 
-            match GD:
+            match processes:
 
-                case 'stochastic':
+                case 1:
 
-                    d_indices = xp.arange(len(inp))
-                    ind = int(xp.random.choice(d_indices,size=1))
-                    partials = self.backpropagate(inp[ind,:],labels[ind,:],skip_check=True)
-                    avg_cost = self.cost*ilast
-                    norm = 1
+                    match GD:
 
-                case 'batch':
+                        case 'stochastic':
 
-                    s_partials = [self.weight_like[:],self.bias_like[:]]
-                    iter_cost_sum = 0
+                            d_indices = xp.arange(len(inp))
+                            ind = int(xp.random.choice(d_indices,size=1))
+                            partials, cost = self.backpropagate(inp[ind,:],labels[ind,:],skip_check=True)
+                            avg_cost = cost*ilast
+                            norm = 1
 
-                    for i in range(len(inp)):
+                        case 'batch':
 
-                        backprop_out = self.backpropagate(inp[i,:],labels[i,:],skip_check=True)
-                        iter_cost_sum += self.cost
+                            s_partials = [weight_like[:],bias_like[:]]
+                            iter_cost_sum = 0
 
-                        for l in range(1,len(self.N)):
-                            s_partials[0][l] = s_partials[0][l] + backprop_out[0][l]
-                            s_partials[1][l] = s_partials[1][l] + backprop_out[1][l]
+                            for i in range(len(inp)):
 
-                    avg_cost = iter_cost_sum*ilast*ilimp
-                    partials = [
-                        s_partials[0],
-                        s_partials[1]
-                        ]
-                    norm = ilimp
+                                backprop_out, cost = self.backpropagate(inp[i,:],labels[i,:],skip_check=True)
+                                iter_cost_sum += cost
 
-                case 'mini_b':
+                                for l in range(1,len(N)):
+                                    s_partials[0][l] = s_partials[0][l] + backprop_out[0][l]
+                                    s_partials[1][l] = s_partials[1][l] + backprop_out[1][l]
 
-                    s_partials = [self.weight_like[:],self.bias_like[:]]
-                    d_indices = xp.arange(len(inp))
-                    iter_cost_sum = 0
+                            avg_cost = iter_cost_sum*ilast*ilimp
+                            partials = [
+                                s_partials[0],
+                                s_partials[1]
+                                ]
+                            norm = ilimp
 
-                    for i in range(batch_size):
+                        case 'mini_b':
 
-                        ind = int(xp.random.choice(d_indices,size=1))
-                        backprop_out = self.backpropagate(inp[ind,:],labels[ind,:],skip_check=True)
-                        iter_cost_sum += self.cost
+                            s_partials = [weight_like[:],bias_like[:]]
+                            d_indices = xp.arange(len(inp))
+                            iter_cost_sum = 0
 
-                        for l in range(1,len(self.N)):
-                            s_partials[0][l] = s_partials[0][l] + backprop_out[0][l]
-                            s_partials[1][l] = s_partials[1][l] + backprop_out[1][l]
+                            for i in range(batch_size):
 
-                    avg_cost = iter_cost_sum*ilast*ibsize
-                    partials = [
-                        s_partials[0],
-                        s_partials[1]
-                        ]
-                    norm = ibsize
+                                ind = int(xp.random.choice(d_indices,size=1))
+                                backprop_out, cost = self.backpropagate(inp[ind,:],labels[ind,:],skip_check=True)
+                                iter_cost_sum += cost
+
+                                for l in range(1,len(N)):
+                                    s_partials[0][l] = s_partials[0][l] + backprop_out[0][l]
+                                    s_partials[1][l] = s_partials[1][l] + backprop_out[1][l]
+
+                            avg_cost = iter_cost_sum*ilast*ibsize
+                            partials = [
+                                s_partials[0],
+                                s_partials[1]
+                                ]
+                            norm = ibsize
+
+                case _:
+
+                    match GD:
+
+                        case 'stochastic':
+                            pass
+
+                        case 'batch':
+                            pass
+
+                        case 'mini_b':
+                            pass
+
 
             if dia_data: avg_eta_tracking_ = []
 
-            for l in range(1,len(self.N)):
+            for l in range(1,len(N)):
 
                 partials[0][l] = partials[0][l]*norm
 
@@ -665,24 +707,24 @@ class Learn_network(object):
                     R_w[l] = (1-gamma)*(partials[0][l])**2\
                         + (gamma*R_w[l] if d_index > 0 else 0)
 
-                dif_w[l] = ((eta_r/(xp.sqrt(R_w[l]) + 0.001))*partials[0][l])\
+                dif_w[l] = ((eta_r/(xp.sqrt(R_w[l]) + 1e-3))*partials[0][l])\
                 if GD == 'mini_b' else (eta*partials[0][l] + gamma*dif_w[l])
-                self.weights[l] = self.weights[l][:] - dif_w[l][:]
+                weights[l] = weights[l][:] - dif_w[l][:]
 
                 if GD == 'mini_b':
                     R_b[l] = (1-gamma)*(partials[1][l])**2\
                         + (gamma*R_b[l] if d_index > 0 else 0)
 
-                dif_b[l] = ((eta_r/(xp.sqrt(R_b[l]) + 0.001))*partials[1][l])\
+                dif_b[l] = ((eta_r/(xp.sqrt(R_b[l]) + 1e-3))*partials[1][l])\
                 if GD == 'mini_b' else (eta*partials[1][l] + gamma*dif_b[l])
-                self.bias[l] = self.bias[l][:] - dif_b[l][:]
+                bias[l] = bias[l][:] - dif_b[l][:]
 
                 if dia_data:
 
                     if GD == 'mini_b':
-                        avg_eta = eta_r/(xp.sqrt(R_w[l]) + 0.0001)
+                        avg_eta = eta_r/(xp.sqrt(R_w[l]) + 1e-3)
                     else:
-                        avg_eta = (eta*partials[0][l] + gamma*dif_w[l])/(partials[0][l]+0.0001)
+                        avg_eta = (eta*partials[0][l] + gamma*dif_w[l])/(partials[0][l] + 1e-3)
 
                     avg_eta = xp.average(avg_eta)
                     avg_eta_tracking_.append(avg_eta)
@@ -730,28 +772,31 @@ class Learn_network(object):
                 os.remove(file)
 
         if save_params:
-            for l in range(1,len(self.N)):
-                np.save(saving_filename + '_w' + str(l-1), self.weights[l],allow_pickle=True)
-                np.save(saving_filename + '_b' + str(l-1), self.bias[l],allow_pickle=True)
+            for l in range(1,len(N)):
+                np.save(saving_filename + '_w' + str(l-1), weights[l],allow_pickle=True)
+                np.save(saving_filename + '_b' + str(l-1), bias[l],allow_pickle=True)
 
         if as_text:
-            np.savetxt(saving_filename + '_w', self.weights,allow_pickle=True)
-            np.savetxt(saving_filename + '_b', self.bias,allow_pickle=True)
+            np.savetxt(saving_filename + '_w', weights,allow_pickle=True)
+            np.savetxt(saving_filename + '_b', bias,allow_pickle=True)
+
+        self.weights = weights[:]
+        self.bias = bias[:]
 
         print(f'Training successful after {elapsed_learning_time}s.',end='\n')
 
-        r_weights = self.weight_like
-        r_bias = self.bias_like
+        r_weights = weight_like[:]
+        r_bias = bias_like[:]
 
-        if self.GPU:
-            for l in range(1,len(self.N)):
-                r_weights[l] = cp.asnumpy(self.weights[l])
-                r_bias[l] = cp.asnumpy(self.bias[l])
+        if GPU:
+            for l in range(1,len(N)):
+                r_weights[l] = cp.asnumpy(weights[l])
+                r_bias[l] = cp.asnumpy(bias[l])
 
         return_dict = {'weights':r_weights,
                        'bias':r_bias}
 
-        if dia_data and self.GPU:
+        if dia_data and GPU:
             return_dict['cost'] = np.array([np.float32(cp.asnumpy(x)) for x in avg_cost_tracking])
             return_dict['l_rate'] = np.array([np.float32(cp.asnumpy(x)) for x in avg_eta_tracking])
         elif dia_data:
