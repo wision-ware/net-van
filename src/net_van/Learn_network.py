@@ -371,16 +371,16 @@ class Learn_network(object):
         # backpropagation multiprocessing
 
         def backprop_worker(
-                inp,
-                labels,
-                weights,
-                bias,
+                # inp,
+                # labels,
+                # weights,
+                # bias,
                 GPU,
                 N,
-                keep,
                 weight_like,
                 bias_like,
-                inside
+                queue_r,
+                queue_s,
                 ):
 
             # PU prefix setup
@@ -393,74 +393,102 @@ class Learn_network(object):
 
             # backpropagation repeater
 
-            for i in range(labels.shape()[1]):
+            while True:
 
-                gradient = weight_like[:]
-                partial_bias = bias_like[:]
+                while True:
 
-                # computing output
+                    try:
+                        delivery = queue_r.get()
+                        break
+                    except mp.Empty:
+                        time.sleep(1e-2)
 
-                all_out_act = []
-                all_out = []
-                p_output = xp.copy(inp[:,i])
+                # unpacking iteration parameters
 
-                for l in range(1,len(N)):
+                match delivery:
+                    case 'terminate': break
 
-                    activation = xp.matmul(p_output,weights[l]) + bias[l]
+                inp = delivery['i']
+                labels = delivery['l']
+                weights = delivery['w']
+                weights = delivery['b']
 
-                    match l < skipper:
-                        case True: p_output = xp.where(activation<0,0.,activation)
-                        case False: p_output = 1/(1+xp.exp(-activation))
+                for i in range(labels.shape()[1]):
 
-                    all_out_act.append(xp.copy(activation[:]))
-                    all_out.append(xp.copy(p_output[:]))
+                    gradient = weight_like[:]
+                    partial_bias = bias_like[:]
 
-                # computing cost
+                    # computing output
 
-                output = [all_out_act,all_out]
-                dif = labels[:,i] - output
-                cost = xp.sum(dif**2)
+                    all_out_act = []
+                    all_out = []
+                    p_output = xp.copy(inp[:,i])
 
-                # output layer
+                    for l in range(1,len(N)):
 
-                dsigmoid = (1/(1+xp.exp(-output[0][-1])))*(1-(1/(1+xp.exp(-output[0][-1]))))
-                dif = output[1][-1]-labels[:,i]
-                deltas = dsigmoid*dif
-                partial_bias_0 = deltas[:]
+                        activation = xp.matmul(p_output,weights[l]) + bias[l]
 
-                m_deltas = xp.tile(deltas,(N[-2],1))
-                m_output = xp.full((N[-1],N[-2]),output[1][-2])
-                grad_0 = m_deltas*xp.transpose(m_output)
+                        match l < skipper:
+                            case True: p_output = xp.where(activation<0,0.,activation)
+                            case False: p_output = 1/(1+xp.exp(-activation))
 
-                gradient[-1] = grad_0[:]
-                partial_bias[-1] = partial_bias_0[:]
-                deltas_old = deltas[:]
+                        all_out_act.append(xp.copy(activation[:]))
+                        all_out.append(xp.copy(p_output[:]))
 
-                # hidden layers
+                    # computing cost
 
-                for l in range(2,len(N)):
+                    output = [all_out_act,all_out]
+                    dif = labels[:,i] - output
+                    cost = xp.sum(dif**2)
 
-                    drelu = xp.where(output[0][-l][:]<0,0.,1)
+                    # output layer
 
-                    deltas_new = xp.matmul(weights[-(l-1)],deltas_old)
-                    deltas_new = deltas_new*drelu
+                    dsigmoid = (1/(1+xp.exp(-output[0][-1])))*(1-(1/(1+xp.exp(-output[0][-1]))))
+                    dif = output[1][-1]-labels[:,i]
+                    deltas = dsigmoid*dif
+                    partial_bias_0 = deltas[:]
 
-                    m_deltas_new = xp.tile(deltas_new,(N[-(l+1)],1))
-                    m_output = xp.tile(output[1][-(l+1)],(N[-l],1))
+                    m_deltas = xp.tile(deltas,(N[-2],1))
+                    m_output = xp.full((N[-1],N[-2]),output[1][-2])
+                    grad_0 = m_deltas*xp.transpose(m_output)
 
-                    gradient[-l] = m_deltas_new*xp.transpose(m_output)
-                    partial_bias[-l] = deltas_new[:]
+                    gradient[-1] = grad_0[:]
+                    partial_bias[-1] = partial_bias_0[:]
+                    deltas_old = deltas[:]
 
-                    deltas_old = deltas_new[:]
+                    # hidden layers
 
-                gradients.append(gradient[:])
-                bias_partials.append(partial_bias[:])
+                    for l in range(2,len(N)):
 
-            gradients = xp.array(gradients,dtype=object)
-            bias_partials = xp.array(bias_partials,dtype=object)
+                        drelu = xp.where(output[0][-l][:]<0,0.,1)
 
-            avg_dw = xp.avarage(gradients,axis=0)
-            avg_db = xp.avarage(bias_partials,axis=0)
+                        deltas_new = xp.matmul(weights[-(l-1)],deltas_old)
+                        deltas_new = deltas_new*drelu
+
+                        m_deltas_new = xp.tile(deltas_new,(N[-(l+1)],1))
+                        m_output = xp.tile(output[1][-(l+1)],(N[-l],1))
+
+                        gradient[-l] = m_deltas_new*xp.transpose(m_output)
+                        partial_bias[-l] = deltas_new[:]
+
+                        deltas_old = deltas_new[:]
+
+                    gradients.append(gradient[:])
+                    bias_partials.append(partial_bias[:])
+
+                gradients = xp.array(gradients,dtype=object)
+                bias_partials = xp.array(bias_partials,dtype=object)
+
+                avg_dw = xp.avarage(gradients,axis=0)
+                avg_db = xp.avarage(bias_partials,axis=0)
+
+                results = {
+                    'w':avg_dw,
+                    'b':avg_db,
+                    'c':cost
+                    }
+
+                queue_s.put(results)
 
         # PU prefix setup
 
@@ -569,8 +597,16 @@ class Learn_network(object):
 
         # 'Auto' option for processes parameter
 
-        match processes:
-            case 'Auto': processes = mp.cpu_count() - 2
+        match GD,processes:
+
+            case 'stochastic', 'Auto': processes = 1
+
+            case 'stochastic', _:
+                processes = 1
+                warnings.warn('GD mode \'stochastic\' is not compatible with multiprocessing, falling back to a single thread.')
+
+            case _, 'Auto': processes = mp.cpu_count() - 2
+
         match processes < 1:
             case True: processes = 1
 
@@ -583,21 +619,24 @@ class Learn_network(object):
         eta_r = xp.float32(0.001)
         self.get_output(inp[0,:],False,label=labels[0,:])
         avg_cost = xp.inf
+        n_dset = inp.shape[0]
+        d_indices = xp.arange(n_dset)
 
         if dia_data or live_monitor: avg_cost_tracking = []
         if live_monitor: empty_chars = ""
         if dia_data: avg_eta_tracking = []
 
         ibsize = 1/batch_size
-        ilimp = 1/len(inp)
+        ilimp = 1/n_dset
         ilast = 1/N[-1]
 
         weight_like = self.weight_like[:]
         bias_like = self.bias_like[:]
 
-        if GD == 'mini_b':
-            R_w = weight_like[:]
-            R_b = bias_like[:]
+        match GD:
+            case 'mini_b':
+                R_w = weight_like[:]
+                R_b = bias_like[:]
 
         dif_w = weight_like[:]
         dif_b = bias_like[:]
@@ -605,6 +644,55 @@ class Learn_network(object):
         weights = weight_like[:]
         bias = bias_like[:]
 
+        match processes, GD:
+            case 1, _: pass
+
+            case _, 'batch':
+                inds = d_indices
+                n_samples = n_dset
+                samples = xp.copy(inp[inds,:])
+                labeling = xp.copy(labels[inds,:])
+                sample_map = xp.arange(n_dset)
+
+            case _, 'mini_b':
+                n_samples = batch_size
+                sample_map = xp.arange(n_samples)
+
+        match processes:
+            case 1: pass
+
+            case _:
+
+                s_per_p = xp.floor_divide(n_samples,processes)
+                remain = n_samples % processes
+                c_len = s_per_p if remain != 0 else 0
+                complement = xp.full(c_len - remain, -1)
+
+                rations = xp.concatenate((sample_map, complement))
+                rations = xp.reshape((processes, n_samples + c_len), order='F')
+
+                # multiprocessing initialization
+
+                procs = [None]*processes
+                queues_r = []
+                queues_s = []
+                backprop_args = (
+                    GPU,
+                    N,
+                    xp.copy(weight_like),
+                    xp.copy(bias_like),
+                    )
+
+                for i,proc in enumerate(procs):
+                    queues_r.append(mp.Queue())
+                    queues_s.append(mp.Queue())
+                    proc = mp.Process(
+                        target=backprop_worker,
+                        args=(backprop_args + (queues_r[i],queues_s[i]))
+                        )
+
+                for proc in procs:
+                    proc.start()
 
         # parameter init
 
@@ -633,75 +721,126 @@ class Learn_network(object):
 
                         case 'stochastic':
 
-                            d_indices = xp.arange(len(inp))
                             ind = int(xp.random.choice(d_indices,size=1))
                             partials, cost = self.backpropagate(inp[ind,:],labels[ind,:],skip_check=True)
                             avg_cost = cost*ilast
-                            norm = 1
 
                         case 'batch':
 
-                            s_partials = [weight_like[:],bias_like[:]]
                             iter_cost_sum = 0
+                            partials = [[],[]]
 
-                            for i in range(len(inp)):
+                            for i in range(n_dset):
 
-                                backprop_out, cost = self.backpropagate(inp[i,:],labels[i,:],skip_check=True)
+                                backprop_out, cost = self.backpropagate(
+                                    xp.copy(inp[i,:]),
+                                    xp.copy(labels[i,:]),
+                                    skip_check=True
+                                    )
                                 iter_cost_sum += cost
 
-                                for l in range(1,len(N)):
-                                    s_partials[0][l] = s_partials[0][l] + backprop_out[0][l]
-                                    s_partials[1][l] = s_partials[1][l] + backprop_out[1][l]
+                                partials[0].append(backprop_out[0])
+                                partials[1].append(backprop_out[1])
+                                partials[0] = xp.array(partials[0], dtype=object)
+                                partials[1] = xp.array(partials[1], dtype=object)
+
+                            partials[0] = xp.average(partials[0],axis=0)
+                            partials[1] = xp.average(partials[1],axis=0)
+                            partials[0] = xp.to_list(partials[0])
+                            partials[1] = xp.to_list(partials[1])
 
                             avg_cost = iter_cost_sum*ilast*ilimp
-                            partials = [
-                                s_partials[0],
-                                s_partials[1]
-                                ]
-                            norm = ilimp
 
                         case 'mini_b':
 
-                            s_partials = [weight_like[:],bias_like[:]]
-                            d_indices = xp.arange(len(inp))
                             iter_cost_sum = 0
 
                             for i in range(batch_size):
 
                                 ind = int(xp.random.choice(d_indices,size=1))
-                                backprop_out, cost = self.backpropagate(inp[ind,:],labels[ind,:],skip_check=True)
+                                backprop_out, cost = self.backpropagate(
+                                    xp.copy(inp[ind,:]),
+                                    xp.copy(labels[ind,:]),
+                                    skip_check=True
+                                    )
                                 iter_cost_sum += cost
 
-                                for l in range(1,len(N)):
-                                    s_partials[0][l] = s_partials[0][l] + backprop_out[0][l]
-                                    s_partials[1][l] = s_partials[1][l] + backprop_out[1][l]
+                                partials[0].append(backprop_out[0])
+                                partials[1].append(backprop_out[1])
+                                partials[0] = xp.array(partials[0], dtype=object)
+                                partials[1] = xp.array(partials[1], dtype=object)
+
+                            partials[0] = xp.average(partials[0],axis=0)
+                            partials[1] = xp.average(partials[1],axis=0)
+                            partials[0] = xp.to_list(partials[0])
+                            partials[1] = xp.to_list(partials[1])
 
                             avg_cost = iter_cost_sum*ilast*ibsize
-                            partials = [
-                                s_partials[0],
-                                s_partials[1]
-                                ]
-                            norm = ibsize
 
                 case _:
 
+                    # preparing data for the iteration
+
                     match GD:
-
-                        case 'stochastic':
-                            pass
-
-                        case 'batch':
-                            pass
-
                         case 'mini_b':
-                            pass
+                            inds = xp.random.choice(
+                                d_indices,
+                                size=batch_size,
+                                dtype=xp.int32
+                                )
+                            samples = xp.copy(inp[inds,:])
+                            labeling = xp.copy(labels[inds,:])
 
+                    # distribution of data between worker processes
+
+                    rations = xp.split(rations, processes, axis=0)
+                    d_rations = processes*[0]
+                    l_rations = processes*[0]
+
+                    for i in range(processes):
+                        rations[i] = rations[i][rations[i] != -1]
+                        d_rations[i] = samples[rations[i]]
+                        l_rations[i] = labeling[rations[i]]
+                        delivery = {
+                            'i':d_rations[i],
+                            'l':l_rations[i],
+                            'w':weights,
+                            'b':bias
+                            }
+                        queues_r[i].put(delivery)
+
+                    while True: # synchronization loop
+                        results = []
+                        try:
+                            for queue in queues_s:
+                                results.append(queue.get())
+                            break
+                        except mp.Empty:
+                            time.sleep(1e-2)
+
+                    # unpacking results
+
+                    s_wpartials = []
+                    s_bpartials = []
+                    s_cost = []
+
+                    for r in results:
+                        s_wpartials = r['w']
+                        s_bpartials = r['b']
+                        s_cost = r['c']
+
+                    s_wpartials = xp.array(s_wpartials, dtype=object)
+                    s_bpartials = xp.array(s_bpartials, dtype=object)
+                    avg_cost = xp.average(xp.array(s_cost),axis=0)
+
+                    partials = [
+                        xp.to_list(xp.avarage(s_wpartials,axis=0)),
+                        xp.to_list(xp.average(s_bpartials,axis=0))
+                        ]
 
             if dia_data: avg_eta_tracking_ = []
 
             for l in range(1,len(N)):
-
-                partials[0][l] = partials[0][l]*norm
 
                 if GD == 'mini_b':
                     R_w[l] = (1-gamma)*(partials[0][l])**2\
@@ -743,6 +882,12 @@ class Learn_network(object):
                 avg_eta_tracking_ = xp.average(xp.array(avg_eta_tracking_))
                 avg_eta_tracking.append(avg_eta_tracking_)
 
+            self.weights = weights[:]
+            self.bias = bias[:]
+
+        for q in queues_r:
+            q.put('terminate')
+
         path_ = Learn_network.path_
         if live_monitor:
             empty_chars = "\b"*(len(message))
@@ -779,9 +924,6 @@ class Learn_network(object):
         if as_text:
             np.savetxt(saving_filename + '_w', weights,allow_pickle=True)
             np.savetxt(saving_filename + '_b', bias,allow_pickle=True)
-
-        self.weights = weights[:]
-        self.bias = bias[:]
 
         print(f'Training successful after {elapsed_learning_time}s.',end='\n')
 
