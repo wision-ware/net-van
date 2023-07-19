@@ -112,6 +112,128 @@ class Learn_network(object):
             return extracted
         else: return 0
 
+
+    def backprop_worker(
+            # inp,
+            # labels,
+            # weights,
+            # bias,
+            GPU,
+            N,
+            weight_like,
+            bias_like,
+            queue_r,
+            queue_s,
+            ):
+
+        # PU prefix setup
+
+        xp = np
+        if GPU: xp = cp
+        skipper = len(N)-1
+        gradients = []
+        bias_partials = []
+
+        # backpropagation repeater
+
+        while True:
+
+            while True:
+
+                try:
+                    delivery = queue_r.get()
+                    break
+                except mp.Empty:
+                    time.sleep(1e-2)
+
+            # unpacking iteration parameters
+
+            match delivery:
+                case 'terminate': break
+
+            inp = delivery['i']
+            labels = delivery['l']
+            weights = delivery['w']
+            bias = delivery['b']
+
+            for i in range(labels.shape()[1]):
+
+                gradient = weight_like[:]
+                partial_bias = bias_like[:]
+
+                # computing output
+
+                all_out_act = []
+                all_out = []
+                p_output = xp.copy(inp[:,i])
+
+                for l in range(1,len(N)):
+
+                    activation = xp.matmul(p_output,weights[l]) + bias[l]
+
+                    match l < skipper:
+                        case True: p_output = xp.where(activation<0,0.,activation)
+                        case False: p_output = 1/(1+xp.exp(-activation))
+
+                    all_out_act.append(xp.copy(activation[:]))
+                    all_out.append(xp.copy(p_output[:]))
+
+                # computing cost
+
+                output = [all_out_act,all_out]
+                dif = labels[:,i] - output
+                cost = xp.sum(dif**2)
+
+                # output layer
+
+                dsigmoid = (1/(1+xp.exp(-output[0][-1])))*(1-(1/(1+xp.exp(-output[0][-1]))))
+                dif = output[1][-1]-labels[:,i]
+                deltas = dsigmoid*dif
+                partial_bias_0 = deltas[:]
+
+                m_deltas = xp.tile(deltas,(N[-2],1))
+                m_output = xp.full((N[-1],N[-2]),output[1][-2])
+                grad_0 = m_deltas*xp.transpose(m_output)
+
+                gradient[-1] = grad_0[:]
+                partial_bias[-1] = partial_bias_0[:]
+                deltas_old = deltas[:]
+
+                # hidden layers
+
+                for l in range(2,len(N)):
+
+                    drelu = xp.where(output[0][-l][:]<0,0.,1)
+
+                    deltas_new = xp.matmul(weights[-(l-1)],deltas_old)
+                    deltas_new = deltas_new*drelu
+
+                    m_deltas_new = xp.tile(deltas_new,(N[-(l+1)],1))
+                    m_output = xp.tile(output[1][-(l+1)],(N[-l],1))
+
+                    gradient[-l] = m_deltas_new*xp.transpose(m_output)
+                    partial_bias[-l] = deltas_new[:]
+
+                    deltas_old = deltas_new[:]
+
+                gradients.append(gradient[:])
+                bias_partials.append(partial_bias[:])
+
+            gradients = xp.array(gradients,dtype=object)
+            bias_partials = xp.array(bias_partials,dtype=object)
+
+            avg_dw = xp.avarage(gradients,axis=0)
+            avg_db = xp.avarage(bias_partials,axis=0)
+
+            results = {
+                'w':avg_dw,
+                'b':avg_db,
+                'c':cost
+                }
+
+            queue_s.put(results)
+
+
     def __init__(self, N, GPU=True):
 
         # verifying parameters
@@ -370,125 +492,7 @@ class Learn_network(object):
 
         # backpropagation multiprocessing
 
-        def backprop_worker(
-                # inp,
-                # labels,
-                # weights,
-                # bias,
-                GPU,
-                N,
-                weight_like,
-                bias_like,
-                queue_r,
-                queue_s,
-                ):
 
-            # PU prefix setup
-
-            xp = np
-            if GPU: xp = cp
-            skipper = len(N)-1
-            gradients = []
-            bias_partials = []
-
-            # backpropagation repeater
-
-            while True:
-
-                while True:
-
-                    try:
-                        delivery = queue_r.get()
-                        break
-                    except mp.Empty:
-                        time.sleep(1e-2)
-
-                # unpacking iteration parameters
-
-                match delivery:
-                    case 'terminate': break
-
-                inp = delivery['i']
-                labels = delivery['l']
-                weights = delivery['w']
-                weights = delivery['b']
-
-                for i in range(labels.shape()[1]):
-
-                    gradient = weight_like[:]
-                    partial_bias = bias_like[:]
-
-                    # computing output
-
-                    all_out_act = []
-                    all_out = []
-                    p_output = xp.copy(inp[:,i])
-
-                    for l in range(1,len(N)):
-
-                        activation = xp.matmul(p_output,weights[l]) + bias[l]
-
-                        match l < skipper:
-                            case True: p_output = xp.where(activation<0,0.,activation)
-                            case False: p_output = 1/(1+xp.exp(-activation))
-
-                        all_out_act.append(xp.copy(activation[:]))
-                        all_out.append(xp.copy(p_output[:]))
-
-                    # computing cost
-
-                    output = [all_out_act,all_out]
-                    dif = labels[:,i] - output
-                    cost = xp.sum(dif**2)
-
-                    # output layer
-
-                    dsigmoid = (1/(1+xp.exp(-output[0][-1])))*(1-(1/(1+xp.exp(-output[0][-1]))))
-                    dif = output[1][-1]-labels[:,i]
-                    deltas = dsigmoid*dif
-                    partial_bias_0 = deltas[:]
-
-                    m_deltas = xp.tile(deltas,(N[-2],1))
-                    m_output = xp.full((N[-1],N[-2]),output[1][-2])
-                    grad_0 = m_deltas*xp.transpose(m_output)
-
-                    gradient[-1] = grad_0[:]
-                    partial_bias[-1] = partial_bias_0[:]
-                    deltas_old = deltas[:]
-
-                    # hidden layers
-
-                    for l in range(2,len(N)):
-
-                        drelu = xp.where(output[0][-l][:]<0,0.,1)
-
-                        deltas_new = xp.matmul(weights[-(l-1)],deltas_old)
-                        deltas_new = deltas_new*drelu
-
-                        m_deltas_new = xp.tile(deltas_new,(N[-(l+1)],1))
-                        m_output = xp.tile(output[1][-(l+1)],(N[-l],1))
-
-                        gradient[-l] = m_deltas_new*xp.transpose(m_output)
-                        partial_bias[-l] = deltas_new[:]
-
-                        deltas_old = deltas_new[:]
-
-                    gradients.append(gradient[:])
-                    bias_partials.append(partial_bias[:])
-
-                gradients = xp.array(gradients,dtype=object)
-                bias_partials = xp.array(bias_partials,dtype=object)
-
-                avg_dw = xp.avarage(gradients,axis=0)
-                avg_db = xp.avarage(bias_partials,axis=0)
-
-                results = {
-                    'w':avg_dw,
-                    'b':avg_db,
-                    'c':cost
-                    }
-
-                queue_s.put(results)
 
         # PU prefix setup
 
@@ -652,7 +656,7 @@ class Learn_network(object):
                 n_samples = n_dset
                 samples = xp.copy(inp[inds,:])
                 labeling = xp.copy(labels[inds,:])
-                sample_map = xp.arange(n_dset)
+                sample_map = xp.arange(n_samples)
 
             case _, 'mini_b':
                 n_samples = batch_size
@@ -663,33 +667,34 @@ class Learn_network(object):
 
             case _:
 
-                s_per_p = xp.floor_divide(n_samples,processes)
+                s_per_p = xp.floor_divide(n_samples,processes).item()
                 remain = n_samples % processes
                 c_len = s_per_p if remain != 0 else 0
-                complement = xp.full(c_len - remain, -1)
+                complement = xp.full(processes - remain, -1)
 
                 rations = xp.concatenate((sample_map, complement))
-                rations = xp.reshape((processes, n_samples + c_len), order='F')
+                rations = xp.reshape(rations, (processes,c_len+1), order='F')
 
                 # multiprocessing initialization
 
-                procs = [None]*processes
+                procs = []
                 queues_r = []
                 queues_s = []
                 backprop_args = (
                     GPU,
                     N,
-                    xp.copy(weight_like),
-                    xp.copy(bias_like),
+                    weight_like[:],
+                    bias_like[:],
                     )
 
-                for i,proc in enumerate(procs):
+                for _ in range(processes):
                     queues_r.append(mp.Queue())
                     queues_s.append(mp.Queue())
                     proc = mp.Process(
-                        target=backprop_worker,
-                        args=(backprop_args + (queues_r[i],queues_s[i]))
-                        )
+                        target=Learn_network.backprop_worker,
+                        args=(backprop_args + (queues_r[-1], queues_s[-1]))
+                    )
+                    procs.append(proc)
 
                 for proc in procs:
                     proc.start()
@@ -722,7 +727,11 @@ class Learn_network(object):
                         case 'stochastic':
 
                             ind = int(xp.random.choice(d_indices,size=1))
-                            partials, cost = self.backpropagate(inp[ind,:],labels[ind,:],skip_check=True)
+                            partials, cost = self.backpropagate(
+                                inp[ind,:],
+                                labels[ind,:],
+                                skip_check=True
+                                )
                             avg_cost = cost*ilast
 
                         case 'batch':
@@ -786,7 +795,6 @@ class Learn_network(object):
                             inds = xp.random.choice(
                                 d_indices,
                                 size=batch_size,
-                                dtype=xp.int32
                                 )
                             samples = xp.copy(inp[inds,:])
                             labeling = xp.copy(labels[inds,:])
@@ -918,12 +926,28 @@ class Learn_network(object):
 
         if save_params:
             for l in range(1,len(N)):
-                np.save(saving_filename + '_w' + str(l-1), weights[l],allow_pickle=True)
-                np.save(saving_filename + '_b' + str(l-1), bias[l],allow_pickle=True)
+                np.save(
+                    saving_filename + '_w' + str(l-1),
+                    weights[l],
+                    allow_pickle=True
+                    )
+                np.save(
+                    saving_filename + '_b' + str(l-1),
+                    bias[l],
+                    allow_pickle=True
+                    )
 
         if as_text:
-            np.savetxt(saving_filename + '_w', weights,allow_pickle=True)
-            np.savetxt(saving_filename + '_b', bias,allow_pickle=True)
+            np.savetxt(
+                saving_filename + '_w',
+                weights,
+                allow_pickle=True
+                )
+            np.savetxt(
+                saving_filename + '_b',
+                bias,
+                allow_pickle=True
+                )
 
         print(f'Training successful after {elapsed_learning_time}s.',end='\n')
 
@@ -935,8 +959,10 @@ class Learn_network(object):
                 r_weights[l] = cp.asnumpy(weights[l])
                 r_bias[l] = cp.asnumpy(bias[l])
 
-        return_dict = {'weights':r_weights,
-                       'bias':r_bias}
+        return_dict = {
+            'weights':r_weights,
+            'bias':r_bias
+            }
 
         if dia_data and GPU:
             return_dict['cost'] = np.array([np.float32(cp.asnumpy(x)) for x in avg_cost_tracking])
