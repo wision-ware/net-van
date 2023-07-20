@@ -156,7 +156,7 @@ class Learn_network(object):
             weights = delivery['w']
             bias = delivery['b']
 
-            for i in range(labels.shape()[1]):
+            for i in range(labels.shape[1]):
 
                 gradient = weight_like[:]
                 partial_bias = bias_like[:]
@@ -397,24 +397,35 @@ class Learn_network(object):
             Learn_network.typeval_assertion( # training data verification
                 isinstance(inp, (np.ndarray,cp.ndarray)),
                 len(inp.shape) == 1,
-                f"positional argument \'inp\' must be type: numpy.ndarray, not {type(inp)}!",
-                f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
+                f"positional argument \'inp\' must be type: "
+                f"numpy.ndarray, not {type(inp)}!",
+                f"positional argument \'inp\' must be 2 dimensional (samples, data_width)"
+                f", {len(inp.shape)} dimensional was given!"
                 )
             try:
                 assert inp.shape[1] == self.N[0]
             except AssertionError:
-                raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
+                raise ValueError(
+                    f"size of the second dimension of the positional argument"
+                    f" \'inp\' must be equal to the number of input nodes of"
+                    f" the first layer! ({self.N[0]} required, {inp.shape[1]} given)"
+                    )
 
             Learn_network.typeval_assertion( # data label verification
                 isinstance(labels, (np.ndarray,cp.ndarray)),
                 len(labels.shape) == 1,
                 f"positional argument \'labels\' must be type: numpy.ndarray, not {type(inp)}!",
-                f"positional argument \'labels\' must be 2 dimensional (samples, binary_sort_cases), {len(inp.shape)} dimensional was given!"
+                f"positional argument \'labels\' must be 2 dimensional (samples, binary_sort_cases),"
+                f" {len(inp.shape)} dimensional was given!"
                 )
             try:
                 assert labels.shape[1] == self.N[-1]
             except AssertionError:
-                raise ValueError(f"size of the second dimension of the positional argument \'labels\' must be equal to the number of output nodes of the final layer! ({self.N[-1]} required, {labels.shape[1]} given)")
+                raise ValueError(
+                    f"size of the second dimension of the positional argument"
+                    f" \'labels\' must be equal to the number of output nodes"
+                    f" of the final layer! ({self.N[-1]} required, {labels.shape[1]} given)"
+                    )
 
         # checking call origin
 
@@ -505,23 +516,33 @@ class Learn_network(object):
             isinstance(inp, (np.ndarray, cp.ndarray)),
             len(inp.shape) == 2,
             f"positional argument \'inp\' must be type: numpy.ndarray, not {type(inp)}!",
-            f"positional argument \'inp\' must be 2 dimensional (samples, data_width), {len(inp.shape)} dimensional was given!"
+            f"positional argument \'inp\' must be 2 dimensional (samples, data_width), "
+            f"{len(inp.shape)} dimensional was given!"
             )
         try:
             assert inp.shape[1] == self.N[0]
         except AssertionError:
-            raise ValueError(f"size of the second dimension of the positional argument \'inp\' must be equal to the number of input nodes of the first layer! ({self.N[0]} required, {inp.shape[1]} given)")
+            raise ValueError(
+                f"size of the second dimension of the positional argument"
+                f" \'inp\' must be equal to the number of input nodes of "
+                f"the first layer! ({self.N[0]} required, {inp.shape[1]} given)"
+                )
 
         Learn_network.typeval_assertion( # data label verification
             isinstance(labels, (np.ndarray, cp.ndarray)),
             len(labels.shape) == 2,
             f"positional argument \'labels\' must be type: numpy.ndarray, not {type(inp)}!",
-            f"positional argument \'labels\' must be 2 dimensional (samples, binary_sort_cases), {len(inp.shape)} dimensional was given!"
+            f"positional argument \'labels\' must be 2 dimensional (samples, binary_sort_cases), "
+            f"{len(inp.shape)} dimensional was given!"
             )
         try:
             assert labels.shape[1] == self.N[-1]
         except AssertionError:
-            raise ValueError(f"size of the second dimension of the positional argument \'labels\' must be equal to the number of output nodes of the final layer! ({self.N[-1]} required, {labels.shape[1]} given)")
+            raise ValueError(
+                f"size of the second dimension of the positional argument"
+                f" \'labels\' must be equal to the number of output nodes"
+                f" of the final layer! ({self.N[-1]} required, {labels.shape[1]} given)"
+                )
 
         Learn_network.typeval_assertion( # cost treshold verification
             isinstance(treshold,(float,Decimal,np.floating,cp.floating)),
@@ -557,12 +578,18 @@ class Learn_network(object):
         try: # live monitor toggle verification
             assert isinstance(live_monitor,bool)
         except AssertionError:
-            raise TypeError(f"keyword argument \'live_monitor\' must be type \'bool\', not {type(live_monitor)}!")
+            raise TypeError(
+                f"keyword argument \'live_monitor\' "
+                f"must be type \'bool\', not {type(live_monitor)}!"
+                )
 
         try: # saving in .txt format toggle verification
             assert isinstance(as_text,bool)
         except AssertionError:
-            raise TypeError(f"keyword argument \'as_text\' must be type \'bool\', not {type(as_text)}!")
+            raise TypeError(
+                f"keyword argument \'as_text\' must"
+                f" be type \'bool\', not {type(as_text)}!"
+                )
 
         Learn_network.typeval_assertion( # verification of the fixed number of iterations
             isinstance(fixed_iter,(int,np.integer,cp.integer)),
@@ -573,12 +600,18 @@ class Learn_network(object):
         try: # diagnostic data return toggle verification
             assert isinstance(dia_data,bool)
         except AssertionError:
-            raise TypeError(f"keyword argument \'dia_data\' must be type \'bool\', not {type(dia_data)}!")
+            raise TypeError(
+                f"keyword argument \'dia_data\' must"
+                f" be type \'bool\', not {type(dia_data)}!"
+                )
 
         try: # trained parameter saving to binary (.npy) format toggle verification
             assert isinstance(save_params,bool)
         except AssertionError:
-            raise TypeError(f"keyword argument \'save_params\' must be type \'bool\', not {type(save_params)}!")
+            raise TypeError(
+                f"keyword argument \'save_params\' "
+                f"must be type \'bool\', not {type(save_params)}!"
+                )
 
         Learn_network.typeval_assertion( # internal parameter saving mode selector verification
             isinstance(overwrite, bool) or isinstance(overwrite, (int,np.integer,cp.integer)),
@@ -607,7 +640,10 @@ class Learn_network(object):
 
             case 'stochastic', _:
                 processes = 1
-                warnings.warn('GD mode \'stochastic\' is not compatible with multiprocessing, falling back to a single thread.')
+                warnings.warn(
+                    'GD mode \'stochastic\' is not compatible '
+                    'with multiprocessing, falling back to a single thread.'
+                    )
 
             case _, 'Auto': processes = mp.cpu_count() - 2
 
@@ -750,11 +786,13 @@ class Learn_network(object):
 
                                 partials[0].append(backprop_out[0])
                                 partials[1].append(backprop_out[1])
+
                                 partials[0] = xp.array(partials[0], dtype=object)
                                 partials[1] = xp.array(partials[1], dtype=object)
 
                             partials[0] = xp.average(partials[0],axis=0)
                             partials[1] = xp.average(partials[1],axis=0)
+
                             partials[0] = xp.to_list(partials[0])
                             partials[1] = xp.to_list(partials[1])
 
@@ -763,6 +801,7 @@ class Learn_network(object):
                         case 'mini_b':
 
                             iter_cost_sum = 0
+                            partials = [[], []]
 
                             for i in range(batch_size):
 
@@ -776,11 +815,13 @@ class Learn_network(object):
 
                                 partials[0].append(backprop_out[0])
                                 partials[1].append(backprop_out[1])
+
                                 partials[0] = xp.array(partials[0], dtype=object)
                                 partials[1] = xp.array(partials[1], dtype=object)
 
                             partials[0] = xp.average(partials[0],axis=0)
                             partials[1] = xp.average(partials[1],axis=0)
+
                             partials[0] = xp.to_list(partials[0])
                             partials[1] = xp.to_list(partials[1])
 
